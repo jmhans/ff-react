@@ -1,13 +1,14 @@
 {
   "private": true,
   "scripts": {
-    "build": "drizzle-kit migrate && next build",
+    "build": "next build",
     "dev": "next dev",
     "start": "next start",
     "lint": "next lint",
     "ff:init-db": "tsx scripts/init-ff-core.ts",
     "ff:sync-week": "echo \"Use POST /api/admin/sync from app or API client\"",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/init-ff-core.ts",
+    "db:migrate:drizzle": "drizzle-kit migrate",
     "db:preflight": "tsx scripts/db-preflight.ts",
     "db:push": "npm run db:preflight && drizzle-kit push",
     "db:push:raw": "drizzle-kit push"
