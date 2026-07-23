@@ -5,6 +5,8 @@ import {
   UserGroupIcon,
   TrophyIcon,
   TicketIcon,
+  UsersIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
 
 const adminSections = [
@@ -31,6 +33,18 @@ const adminSections = [
     description: 'Manage raffles and prizes.',
     href: '/dashboard/raffles',
     icon: TicketIcon,
+  },
+  {
+    name: 'Owners',
+    description: 'Manage FantasyFantasy owners and season assignments.',
+    href: '/dashboard/admin/owners',
+    icon: UsersIcon,
+  },
+  {
+    name: 'League Picker',
+    description: 'Compare league settings and draft details before selection.',
+    href: '/dashboard/admin/league-picker',
+    icon: FunnelIcon,
   },
 ];
 

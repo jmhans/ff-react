@@ -88,4 +88,30 @@ export class YahooClient {
 
     return response.data;
   }
+
+  async getLeagueMetadata(leagueKey: string, accessToken: string) {
+    const response = await this.client.get(`/league/${leagueKey}/metadata`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      params: {
+        format: 'json',
+      },
+    });
+
+    return response.data;
+  }
+
+  async getLeagueSettings(leagueKey: string, accessToken: string) {
+    const response = await this.client.get(`/league/${leagueKey}/settings`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      params: {
+        format: 'json',
+      },
+    });
+
+    return response.data;
+  }
 }
