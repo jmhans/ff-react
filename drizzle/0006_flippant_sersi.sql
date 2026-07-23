@@ -1,0 +1,2 @@
+ALTER TABLE "raffle_prizes" ADD COLUMN "winner_id" uuid;--> statement-breakpoint
+ALTER TABLE "raffle_prizes" ADD CONSTRAINT "fk_raffle_prizes_winner" FOREIGN KEY ("winner_id") REFERENCES "public"."golfers"("id") ON DELETE set null ON UPDATE cascade;

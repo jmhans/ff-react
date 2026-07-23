@@ -1,0 +1,2 @@
+ALTER TABLE "allocations" ADD COLUMN "raffle_id" uuid;--> statement-breakpoint
+ALTER TABLE "allocations" ADD CONSTRAINT "raffle_id_foreign_key" FOREIGN KEY ("raffle_id") REFERENCES "public"."raffles"("id") ON DELETE cascade ON UPDATE cascade;

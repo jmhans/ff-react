@@ -1,0 +1,54 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "drizzle-kit migrate && next build",
+    "dev": "next dev",
+    "start": "next start",
+    "lint": "next lint",
+    "ff:init-db": "tsx scripts/init-ff-core.ts",
+    "ff:sync-week": "echo \"Use POST /api/admin/sync from app or API client\"",
+    "db:migrate": "drizzle-kit migrate",
+    "db:preflight": "tsx scripts/db-preflight.ts",
+    "db:push": "npm run db:preflight && drizzle-kit push",
+    "db:push:raw": "drizzle-kit push"
+  },
+  "dependencies": {
+    "@auth0/nextjs-auth0": "^4.16.0",
+    "@heroicons/react": "^2.2.0",
+    "@neondatabase/serverless": "^1.0.2",
+    "@tailwindcss/forms": "^0.5.10",
+    "@vercel/postgres": "^0.8.0",
+    "autoprefixer": "10.4.19",
+    "axios": "^1.7.5",
+    "bcrypt": "^5.1.1",
+    "chart.js": "^4.5.0",
+    "cheerio": "^1.0.0-rc.12",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.44.2",
+    "nanoid": "^5.1.5",
+    "next": "^15.3.5",
+    "postcss": "8.4.38",
+    "react": "^19.0.0",
+    "react-chartjs-2": "^5.3.0",
+    "react-dom": "^19.0.0",
+    "react-icons": "^5.6.0",
+    "recharts": "^3.9.2",
+    "tailwindcss": "3.4.4",
+    "typescript": "5.5.2",
+    "use-debounce": "^10.0.5",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "20.14.8",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "drizzle-kit": "^0.31.4",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.4",
+    "tsx": "^4.20.3"
+  },
+  "engines": {
+    "node": ">=20.12.0"
+  }
+}

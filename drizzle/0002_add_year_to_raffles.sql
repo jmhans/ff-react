@@ -1,0 +1,1 @@
+ALTER TABLE "raffles" ADD COLUMN "year" integer DEFAULT 2025 NOT NULL;

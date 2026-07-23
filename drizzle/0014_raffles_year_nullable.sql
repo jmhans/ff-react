@@ -1,0 +1,1 @@
+ALTER TABLE "raffles" ALTER COLUMN "year" DROP NOT NULL;
