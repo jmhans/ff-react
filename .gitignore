@@ -33,6 +33,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# generated/cached data dumps from one-off scripts
+/scripts/output/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

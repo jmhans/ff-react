@@ -2,6 +2,7 @@ import {
   boolean,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -31,12 +32,50 @@ export const ffOwners = pgTable('ff_owners', {
 export const ffLeagues = pgTable('ff_leagues', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   season: integer('season').notNull(),
-  yahooLeagueKey: varchar('yahoo_league_key', { length: 40 }).notNull(),
+  platform: varchar('platform', { length: 20 }).default('sleeper').notNull(),
+  sleeperLeagueKey: varchar('sleeper_league_key', { length: 40 }).notNull(),
   displayName: varchar('display_name', { length: 180 }),
   includeInPool: boolean('include_in_pool').default(true).notNull(),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
 });
+
+// One row per (league, season, owner) — the current-owner filter is applied
+// at ingestion time, not here, so this table only ever contains history for
+// people still in the league today. Cumulative win/loss/tie totals are
+// derived by summing across a given owner's rows, not stored separately.
+export const ffSleeperOwnerHistory = pgTable('ff_sleeper_owner_history', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  rootLeagueKey: varchar('root_league_key', { length: 40 }).notNull(), // this season's league_id, identifies the franchise
+  seasonLeagueKey: varchar('season_league_key', { length: 40 }).notNull(), // that particular season's own league_id
+  season: varchar('season', { length: 10 }).notNull(),
+  sleeperUserId: varchar('sleeper_user_id', { length: 40 }).notNull(),
+  displayName: varchar('display_name', { length: 180 }),
+  wins: integer('wins').default(0).notNull(),
+  losses: integer('losses').default(0).notNull(),
+  ties: integer('ties').default(0).notNull(),
+  pointsFor: numeric('points_for'),
+  pointsAgainst: numeric('points_against'),
+  finishingRank: integer('finishing_rank'),
+  rankSource: varchar('rank_source', { length: 30 }), // 'bracket' | 'regular_season_estimate'
+  syncedAt: timestamp('synced_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_sleeper_owner_history_uidx').on(table.seasonLeagueKey, table.sleeperUserId),
+]);
+
+// Current-roster snapshot, refreshed in place (not versioned history) — one
+// row per roster, overwritten on each sync run as the league progresses.
+export const ffSleeperRosters = pgTable('ff_sleeper_rosters', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  leagueKey: varchar('league_key', { length: 40 }).notNull(),
+  rosterId: integer('roster_id').notNull(),
+  sleeperUserId: varchar('sleeper_user_id', { length: 40 }),
+  displayName: varchar('display_name', { length: 180 }),
+  playerIds: jsonb('player_ids').notNull(),
+  syncedAt: timestamp('synced_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_sleeper_rosters_uidx').on(table.leagueKey, table.rosterId),
+]);
 
 export const ffTeams = pgTable('ff_teams', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),

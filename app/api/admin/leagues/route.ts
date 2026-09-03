@@ -3,7 +3,7 @@ import { sql } from '@vercel/postgres';
 
 type LeagueInput = {
   season: number;
-  yahooLeagueKey: string;
+  sleeperLeagueKey: string;
   displayName?: string;
   includeInPool?: boolean;
 };
@@ -11,7 +11,7 @@ type LeagueInput = {
 export async function GET() {
   try {
     const { rows } = await sql`
-      SELECT id, season, yahoo_league_key, display_name, include_in_pool, created_at, updated_at
+      SELECT id, season, platform, sleeper_league_key, display_name, include_in_pool, created_at, updated_at
       FROM ff_leagues
       ORDER BY season DESC, created_at DESC
     `;
@@ -32,9 +32,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as LeagueInput;
 
-    if (!body?.season || !body?.yahooLeagueKey) {
+    if (!body?.season || !body?.sleeperLeagueKey) {
       return NextResponse.json(
-        { error: 'season and yahooLeagueKey are required.' },
+        { error: 'season and sleeperLeagueKey are required.' },
         { status: 400 },
       );
     }
@@ -42,9 +42,9 @@ export async function POST(request: NextRequest) {
     const includeInPool = body.includeInPool ?? true;
 
     const { rows } = await sql`
-      INSERT INTO ff_leagues (season, yahoo_league_key, display_name, include_in_pool)
-      VALUES (${body.season}, ${body.yahooLeagueKey}, ${body.displayName ?? null}, ${includeInPool})
-      RETURNING id, season, yahoo_league_key, display_name, include_in_pool, created_at, updated_at
+      INSERT INTO ff_leagues (season, platform, sleeper_league_key, display_name, include_in_pool)
+      VALUES (${body.season}, 'sleeper', ${body.sleeperLeagueKey}, ${body.displayName ?? null}, ${includeInPool})
+      RETURNING id, season, platform, sleeper_league_key, display_name, include_in_pool, created_at, updated_at
     `;
 
     return NextResponse.json({ league: rows[0] }, { status: 201 });
