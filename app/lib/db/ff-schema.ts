@@ -28,6 +28,20 @@ export const ffOwners = pgTable('ff_owners', {
   uniqueIndex('ff_owners_legacy_mongo_id_uidx').on(table.legacyMongoId),
 ]);
 
+// Many-logins-to-one-owner: a person may sign in with several different
+// Auth0 identities over the years (different providers/emails), all
+// resolving to the same ff_owners row. ff_owners.auth0_user_id is legacy,
+// left in place unused — this table is the real source of truth.
+export const ffOwnerLogins = pgTable('ff_owner_logins', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  ownerId: uuid('owner_id').notNull().references(() => ffOwners.id, { onDelete: 'cascade' }),
+  auth0UserId: varchar('auth0_user_id', { length: 180 }).notNull(),
+  email: varchar('email', { length: 320 }),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_owner_logins_auth0_user_id_uidx').on(table.auth0UserId),
+]);
+
 export const ffLeagues = pgTable('ff_leagues', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   season: integer('season').notNull(),
@@ -70,10 +84,53 @@ export const ffSleeperRosters = pgTable('ff_sleeper_rosters', {
   rosterId: integer('roster_id').notNull(),
   sleeperUserId: varchar('sleeper_user_id', { length: 40 }),
   displayName: varchar('display_name', { length: 180 }),
+  teamName: varchar('team_name', { length: 180 }), // custom team name set in Sleeper, distinct from the owner's display name
   playerIds: jsonb('player_ids').notNull(),
   syncedAt: timestamp('synced_at', { mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex('ff_sleeper_rosters_uidx').on(table.leagueKey, table.rosterId),
+]);
+
+// Composite historical-performance ranking per (root_league_key, sleeper_user_id)
+// — Bühlmann-credibility win-pct plus z-scores, recomputed by the ranking
+// pipeline script, not derived live.
+export const ffTeamRankings = pgTable('ff_team_rankings', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  rootLeagueKey: varchar('root_league_key', { length: 40 }).notNull(),
+  sleeperUserId: varchar('sleeper_user_id', { length: 40 }).notNull(),
+  displayName: varchar('display_name', { length: 180 }),
+  seasonCount: integer('season_count').notNull(),
+  wins: integer('wins').notNull(),
+  losses: integer('losses').notNull(),
+  ties: integer('ties').notNull(),
+  winPct: numeric('win_pct').notNull(),
+  buhlmanWinPct: numeric('buhlman_win_pct').notNull(),
+  wpctZ: numeric('wpct_z').notNull(),
+  wpctRawZ: numeric('wpct_raw_z'),
+  computedAt: timestamp('computed_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_team_rankings_uidx').on(table.rootLeagueKey, table.sleeperUserId),
+]);
+
+// Season-long projected points per roster, recomputed by
+// scripts/calculate-team-projections.ts — a point-in-time snapshot, not
+// live-derived (see app/lib/sleeper/lineup-optimizer.ts for the same
+// optimal-lineup logic used elsewhere for live per-week projections).
+export const ffTeamProjections = pgTable('ff_team_projections', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  leagueKey: varchar('league_key', { length: 40 }).notNull(),
+  rosterId: integer('roster_id').notNull(),
+  sleeperUserId: varchar('sleeper_user_id', { length: 40 }),
+  displayName: varchar('display_name', { length: 180 }),
+  projectedPoints: numeric('projected_points').notNull(),
+  startersUsed: jsonb('starters_used').notNull(),
+  pointsZ: numeric('points_z'),
+  pointsRawZ: numeric('points_raw_z'),
+  compositeRawZ: numeric('composite_raw_z'),
+  compositeScore: numeric('composite_score'),
+  computedAt: timestamp('computed_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_team_projections_uidx').on(table.leagueKey, table.rosterId),
 ]);
 
 export const ffTeams = pgTable('ff_teams', {

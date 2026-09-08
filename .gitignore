@@ -36,6 +36,11 @@ yarn-error.log*
 # generated/cached data dumps from one-off scripts
 /scripts/output/
 
+# one-off scripts tied to a specific event (e.g. a manual data migration) —
+# not reusable, shouldn't accumulate in the repo the way migrate-add-*.ts
+# schema migrations do
+/scripts/oneoff-*.ts
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
