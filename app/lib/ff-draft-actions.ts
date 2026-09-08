@@ -4,8 +4,25 @@ import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import { auth0 } from '@/app/lib/auth0';
 import { buildSnakeOrder, CURRENT_SEASON, getClaimedOwner } from '@/app/lib/ff-draft-helpers';
+import { sendPushToOwner } from '@/app/lib/push';
 
 export type ActionResult = { success: true } | { success: false; error: string };
+
+/**
+ * Push-notifies an owner that they're on the clock. Best-effort — no
+ * subscription or a send failure should never block the draft itself.
+ */
+async function notifyOnTheClock(ownerId: string, pickNumber: number) {
+  try {
+    await sendPushToOwner(ownerId, {
+      title: "You're on the clock!",
+      body: `Fantasy Fantasy draft — pick #${pickNumber}`,
+      url: '/dashboard/draft',
+    });
+  } catch (error) {
+    console.error('Failed to send on-the-clock push notification:', error);
+  }
+}
 
 export async function claimOwner(ownerId: string): Promise<ActionResult> {
   const session = await auth0.getSession();
@@ -99,6 +116,12 @@ export async function startDraft(): Promise<ActionResult> {
   }
 
   await sql`UPDATE ff_drafts SET started_at = now(), updated_at = now() WHERE id = ${draft.id}`;
+
+  const firstPicker = await sql`SELECT owner_id FROM ff_draft_drafters WHERE draft_id = ${draft.id} AND pick = 1`;
+  if (firstPicker.rows[0]?.owner_id) {
+    await notifyOnTheClock(firstPicker.rows[0].owner_id as string, 1);
+  }
+
   revalidatePath('/dashboard/draft');
   return { success: true };
 }
@@ -143,6 +166,7 @@ export async function makePick(
     return { success: false, error: "It's not your turn to pick." };
   }
 
+  let insertedPickNumber: number;
   try {
     const insertResult = await sql`
       INSERT INTO ff_draft_picks (draft_id, pick_number, drafter_owner_id, sleeper_league_key, sleeper_user_id, picked_name, picked_at)
@@ -153,11 +177,17 @@ export async function makePick(
     if (insertResult.rowCount === 0) {
       return { success: false, error: 'Pick failed unexpectedly — please refresh.' };
     }
+    insertedPickNumber = insertResult.rows[0].pick_number as number;
   } catch (error: any) {
     if (error?.code === '23505') {
       return { success: false, error: 'Someone just picked — refresh and try again.' };
     }
     throw error;
+  }
+
+  const nextSlot = snakeOrder.find((s) => s.pickNumber === insertedPickNumber + 1);
+  if (nextSlot) {
+    await notifyOnTheClock(nextSlot.ownerId, nextSlot.pickNumber);
   }
 
   revalidatePath('/dashboard/draft');
