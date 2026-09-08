@@ -3,7 +3,15 @@
 import { useTransition } from 'react';
 import { setPickStarterStatus } from '@/app/lib/ff-draft-actions';
 
-export default function StarterToggle({ pickId, isStarter }: { pickId: string; isStarter: boolean }) {
+export default function StarterToggle({
+  pickId,
+  week,
+  isStarter,
+}: {
+  pickId: string;
+  week: number;
+  isStarter: boolean;
+}) {
   const [isPending, startTransition] = useTransition();
 
   return (
@@ -12,7 +20,7 @@ export default function StarterToggle({ pickId, isStarter }: { pickId: string; i
       disabled={isPending}
       onClick={() =>
         startTransition(async () => {
-          await setPickStarterStatus(pickId, !isStarter);
+          await setPickStarterStatus(pickId, week, !isStarter);
         })
       }
       className={`rounded-full px-3 py-1 text-xs font-semibold transition disabled:opacity-50 ${

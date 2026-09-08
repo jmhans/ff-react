@@ -5,11 +5,20 @@ import { CURRENT_SEASON } from '@/app/lib/ff-draft-helpers';
 import { getActualPoints } from '@/app/lib/sleeper/actual-points';
 
 async function sumStarterPoints(ownerId: string, week: number): Promise<{ total: number; missing: number }> {
+  // Effective starter status as of THIS week, not whatever is_starter shows
+  // today — explicit ff_weekly_starters row for this week if set, else the
+  // most recent prior week's row, else the legacy is_starter fallback.
   const picks = await sql`
     SELECT dp.sleeper_league_key, dp.sleeper_user_id
     FROM ff_draft_picks dp
     JOIN ff_drafts d ON d.id = dp.draft_id
-    WHERE dp.drafter_owner_id = ${ownerId} AND dp.is_starter = true AND d.season = ${CURRENT_SEASON}
+    WHERE dp.drafter_owner_id = ${ownerId} AND d.season = ${CURRENT_SEASON}
+      AND COALESCE(
+        (SELECT ws.is_starter FROM ff_weekly_starters ws
+         WHERE ws.pick_id = dp.id AND ws.season = ${CURRENT_SEASON} AND ws.week <= ${week}
+         ORDER BY ws.week DESC LIMIT 1),
+        dp.is_starter
+      ) = true
   `;
 
   let total = 0;
@@ -30,8 +39,9 @@ async function sumStarterPoints(ownerId: string, week: number): Promise<{ total:
 }
 
 /**
- * Finalizes one Fantasy Fantasy week: sums each owner's 4 starter picks'
- * real Sleeper points and writes the result into ff_weekly_matchups. Safe to
+ * Finalizes one Fantasy Fantasy week: sums each owner's starter picks'
+ * (that week's locked-in lineup) real Sleeper points and writes the result
+ * into ff_weekly_matchups. Safe to
  * re-run — any matchup with missing starter data is skipped (left
  * "scheduled") rather than partially scored, so re-running later once
  * Sleeper posts final box scores picks up where it left off.

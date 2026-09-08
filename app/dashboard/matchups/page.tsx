@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { sql } from '@vercel/postgres';
-import { CURRENT_SEASON, getClaimedOwner } from '@/app/lib/ff-draft-helpers';
+import { CURRENT_SEASON, getClaimedOwner, pickDefaultWeek } from '@/app/lib/ff-draft-helpers';
 import { SleeperClient } from '@/app/lib/sleeper/client';
 import WeekSelect from './WeekSelect';
 
@@ -20,13 +20,6 @@ type MatchupRow = {
   away_team_name: string | null;
   away_display_name: string | null;
 };
-
-function pickDefaultWeek(weeks: number[], currentNflWeek: number): number {
-  if (weeks.includes(currentNflWeek)) return currentNflWeek;
-  const priorWeeks = weeks.filter((w) => w <= currentNflWeek);
-  if (priorWeeks.length > 0) return Math.max(...priorWeeks);
-  return weeks[0];
-}
 
 export default async function MatchupsPage({
   searchParams,

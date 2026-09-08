@@ -45,7 +45,13 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
     JOIN ff_drafts d ON d.id = dp.draft_id AND d.season = ${CURRENT_SEASON}
     LEFT JOIN ff_team_win_probability_cache c
       ON c.pick_id = dp.id AND c.season = ${CURRENT_SEASON} AND c.week = ${week}
-    WHERE dp.drafter_owner_id = ${ownerId} AND dp.is_starter = true
+    WHERE dp.drafter_owner_id = ${ownerId}
+      AND COALESCE(
+        (SELECT ws.is_starter FROM ff_weekly_starters ws
+         WHERE ws.pick_id = dp.id AND ws.season = ${CURRENT_SEASON} AND ws.week <= ${week}
+         ORDER BY ws.week DESC LIMIT 1),
+        dp.is_starter
+      ) = true
     ORDER BY dp.picked_name ASC
   `;
 

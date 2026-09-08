@@ -1,8 +1,12 @@
 import { sql } from '@vercel/postgres';
 import { CURRENT_SEASON } from '@/app/lib/ff-draft-helpers';
-import { SleeperClient } from '@/app/lib/sleeper/client';
 import StarterToggle from '@/app/dashboard/my-roster/StarterToggle';
 import TeamNameEditor from './TeamNameEditor';
+import RosterWeekSelect from './RosterWeekSelect';
+import LockedStarterBadge from './LockedStarterBadge';
+
+const REGULAR_SEASON_WEEKS = 18;
+const AVAILABLE_WEEKS = Array.from({ length: REGULAR_SEASON_WEEKS }, (_, i) => i + 1);
 
 type RosterRow = {
   id: string;
@@ -18,27 +22,36 @@ type RosterRow = {
 
 /**
  * The full roster view for one owner's drafted teams — starter/bench status,
- * league, this-week matchup (opponent, proj for/against, win%). Used both by
- * /dashboard/my-roster (the logged-in owner, canEdit always true) and
+ * league, that week's matchup (opponent, proj for/against, win%). Used both
+ * by /dashboard/my-roster (the logged-in owner, canEdit always true) and
  * /dashboard/teams/[ownerId] (anyone's team, canEdit only for that owner or
  * an admin) — same page, different identity/edit-permission.
  *
- * Matchup data comes from ff_team_win_probability_cache (refreshed by a
- * Vercel Cron job), not live Sleeper calls — this page used to call
- * computeWeeklyMatchup once per pick on every render (and again after every
- * starter/bench toggle, since Next re-renders the page after a Server
- * Action), which was the real source of multi-second loads/toggles.
+ * Starter status is per-week (ff_weekly_starters) — a week with no explicit
+ * row falls back to the most recent prior week, then to the legacy
+ * ff_draft_picks.is_starter, resolved in the query below. Roster changes
+ * lock at each week's 2nd-NFL-game kickoff (ff_nfl_week_locks, synced from
+ * ESPN) — locked weeks render a read-only badge instead of the toggle.
+ *
+ * Matchup data (opponent/proj/win%) comes from ff_team_win_probability_cache
+ * (refreshed by a Vercel Cron job), not live Sleeper calls — that cache is
+ * only ever populated for the current NFL week, so other weeks show '-'
+ * until the cron catches up to them.
  */
 export default async function RosterView({
   ownerId,
   ownerName,
   teamName,
   canEdit,
+  week,
+  basePath,
 }: {
   ownerId: string;
   ownerName: string;
   teamName: string | null;
   canEdit: boolean;
+  week: number;
+  basePath: string;
 }) {
   const draftResult = await sql`SELECT id FROM ff_drafts WHERE season = ${CURRENT_SEASON}`;
   const draft = draftResult.rows[0];
@@ -56,16 +69,23 @@ export default async function RosterView({
     );
   }
 
-  const client = new SleeperClient();
-  const state = await client.getNflState();
-  const currentWeek = state.week;
+  const lockResult = await sql`
+    SELECT lock_at FROM ff_nfl_week_locks WHERE season = ${CURRENT_SEASON} AND week = ${week}
+  `;
+  const lockAt = lockResult.rows[0]?.lock_at as string | undefined;
+  const isLocked = !!lockAt && new Date(lockAt) <= new Date();
 
   const picks = await sql<RosterRow>`
     SELECT
       dp.id,
       dp.pick_number,
       dp.picked_name,
-      dp.is_starter,
+      COALESCE(
+        (SELECT ws.is_starter FROM ff_weekly_starters ws
+         WHERE ws.pick_id = dp.id AND ws.season = ${CURRENT_SEASON} AND ws.week <= ${week}
+         ORDER BY ws.week DESC LIMIT 1),
+        dp.is_starter
+      ) AS is_starter,
       l.display_name as league_name,
       c.opponent_name,
       c.proj_for,
@@ -74,7 +94,7 @@ export default async function RosterView({
     FROM ff_draft_picks dp
     LEFT JOIN ff_leagues l ON l.sleeper_league_key = dp.sleeper_league_key AND l.platform = 'sleeper'
     LEFT JOIN ff_team_win_probability_cache c
-      ON c.pick_id = dp.id AND c.season = ${CURRENT_SEASON} AND c.week = ${currentWeek}
+      ON c.pick_id = dp.id AND c.season = ${CURRENT_SEASON} AND c.week = ${week}
     WHERE dp.draft_id = ${draft.id} AND dp.drafter_owner_id = ${ownerId}
     ORDER BY dp.pick_number ASC
   `;
@@ -99,11 +119,12 @@ export default async function RosterView({
         </div>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-100 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-4">
             <h2 className="font-semibold text-gray-900">
               Roster ({starters.length} starters, {bench.length} bench)
-              <span className="ml-2 font-normal text-gray-500">— Week {currentWeek} matchups</span>
+              {isLocked ? <span className="ml-2 font-normal text-red-600">— Week {week} locked</span> : null}
             </h2>
+            <RosterWeekSelect basePath={basePath} weeks={AVAILABLE_WEEKS} selected={week} />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -112,7 +133,7 @@ export default async function RosterView({
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Team</th>
                   <th className="px-4 py-3">League</th>
-                  <th className="px-4 py-3">This Week Opponent</th>
+                  <th className="px-4 py-3">Opponent</th>
                   <th className="px-4 py-3">Proj For</th>
                   <th className="px-4 py-3">Proj Against</th>
                   <th className="px-4 py-3">Win %</th>
@@ -122,8 +143,10 @@ export default async function RosterView({
                 {picks.rows.map((pick) => (
                   <tr key={pick.id}>
                     <td className="px-4 py-3">
-                      {canEdit ? (
-                        <StarterToggle pickId={pick.id} isStarter={pick.is_starter} />
+                      {canEdit && !isLocked ? (
+                        <StarterToggle pickId={pick.id} week={week} isStarter={pick.is_starter} />
+                      ) : isLocked ? (
+                        <LockedStarterBadge isStarter={pick.is_starter} lockAt={lockAt!} />
                       ) : (
                         <span
                           className={
