@@ -37,6 +37,7 @@ export default function DraftLiveRoom({
   const [adminMode, setAdminMode] = useState(false);
   const [undoError, setUndoError] = useState<string | null>(null);
   const [isUndoing, startUndoTransition] = useTransition();
+  const [mobileView, setMobileView] = useState<'teams' | 'rosters'>('teams');
 
   const canDraftNow = isMyTurn || (isAdmin && adminMode);
 
@@ -81,11 +82,33 @@ export default function DraftLiveRoom({
         currentPickNumber={currentPickNumber}
         viewerOwnerId={viewerOwnerId}
         selectedOwnerId={selectedOwnerId}
-        onSelectOwner={setSelectedOwnerId}
+        onSelectOwner={(ownerId) => {
+          setSelectedOwnerId(ownerId);
+          setMobileView('rosters');
+        }}
       />
 
+      {/* Mobile-only: swap between the full-width teams table and the
+          roster/history panel, instead of stacking both (which buried the
+          panel below a potentially long table). Both stay visible
+          side-by-side at lg+ regardless of this. */}
+      <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1 lg:hidden">
+        {(['teams', 'rosters'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setMobileView(v)}
+            className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              mobileView === v ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            {v === 'teams' ? 'Available Teams' : 'Draft History'}
+          </button>
+        ))}
+      </div>
+
       <div className="lg:flex lg:items-start lg:gap-4">
-        <div className="lg:min-w-0 lg:flex-1">
+        <div className={`lg:min-w-0 lg:flex-1 ${mobileView === 'teams' ? 'block' : 'hidden'} lg:block`}>
           <AvailableTeamsPanel
             rows={poolRows}
             draftId={draftId}
@@ -93,7 +116,7 @@ export default function DraftLiveRoom({
             draftingForName={!isMyTurn && canDraftNow ? (currentSlot ? ownerNamesById[currentSlot.ownerId] : undefined) : undefined}
           />
         </div>
-        <div className="mt-4 lg:mt-0">
+        <div className={`mt-4 lg:mt-0 ${mobileView === 'rosters' ? 'block' : 'hidden'} lg:block`}>
           <RosterPanel
             ownerName={selectedOwnerId ? (ownerNamesById[selectedOwnerId] ?? null) : null}
             picks={selectedOwnerId ? (rostersByOwnerId[selectedOwnerId] ?? []) : []}

@@ -35,7 +35,7 @@ export default function SideNav() {
     <>
       {/* ── Mobile top bar ─────────────────────────────────────────────── */}
       <div className="md:hidden flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 h-14">
-        <Link href="/" className="flex items-center h-10 w-10 shrink-0">
+        <Link href="/" className="flex h-10 w-36 shrink-0 items-center">
           <AcmeLogo />
         </Link>
         <button
@@ -58,7 +58,7 @@ export default function SideNav() {
           {/* Drawer panel */}
           <div className="relative flex flex-col w-64 max-w-[80vw] h-full bg-gray-800 px-3 py-4 shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <Link href="/" className="w-28 text-white" onClick={() => setDrawerOpen(false)}>
+              <Link href="/" className="flex-1 text-white" onClick={() => setDrawerOpen(false)}>
                 <AcmeLogo />
               </Link>
               <button
@@ -95,7 +95,7 @@ export default function SideNav() {
                 FF
               </div>
             ) : (
-              <div className="w-40 text-white">
+              <div className="w-full text-white">
                 <AcmeLogo />
               </div>
             )}
