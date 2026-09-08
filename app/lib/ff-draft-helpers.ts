@@ -31,6 +31,34 @@ export function buildSnakeOrder(ownerIds: string[], rounds: number): SnakePickSl
   return slots;
 }
 
+/**
+ * Picks a sensible default week out of a set of available weeks: the
+ * current NFL week if it's among them, else the latest week at or before
+ * it, else just the first available week. Shared by the Matchups page and
+ * roster pages so "what week should this default to" stays one definition.
+ */
+export function pickDefaultWeek(weeks: number[], currentNflWeek: number): number {
+  if (weeks.includes(currentNflWeek)) return currentNflWeek;
+  const priorWeeks = weeks.filter((w) => w <= currentNflWeek);
+  if (priorWeeks.length > 0) return Math.max(...priorWeeks);
+  return weeks[0];
+}
+
+/**
+ * The next week an owner can still edit their lineup for — the earliest
+ * week whose roster lock hasn't passed yet. Falls back to the current NFL
+ * week if the schedule hasn't been synced (ff_nfl_week_locks empty) —
+ * fail-open, same convention as every other cache/lookup miss in this app.
+ */
+export async function getNextEditableWeek(currentNflWeek: number): Promise<number> {
+  const result = await sql`
+    SELECT MIN(week) as week FROM ff_nfl_week_locks
+    WHERE season = ${CURRENT_SEASON} AND lock_at > now()
+  `;
+  const week = result.rows[0]?.week;
+  return week != null ? Number(week) : currentNflWeek;
+}
+
 export type ClaimedOwner = {
   id: string;
   displayName: string;

@@ -193,44 +193,57 @@ export async function undoLastPick(draftId: string): Promise<ActionResult> {
 
 const MAX_STARTERS = 7;
 
-export async function setPickStarterStatus(pickId: string, isStarter: boolean): Promise<ActionResult> {
+/**
+ * Sets a pick's starter/bench status for one specific week. Per-week, not
+ * global — see ff_weekly_starters in ff-schema.ts: a week with no explicit
+ * row falls back to the most recent prior week, then to the legacy
+ * ff_draft_picks.is_starter flag, which this function no longer writes to.
+ */
+export async function setPickStarterStatus(pickId: string, week: number, isStarter: boolean): Promise<ActionResult> {
   const claimed = await getClaimedOwner();
   if (!claimed) {
     return { success: false, error: 'You need to claim your owner identity first.' };
   }
 
-  if (isStarter) {
-    const pickRow = await sql`SELECT drafter_owner_id, is_starter FROM ff_draft_picks WHERE id = ${pickId}`;
-    const pick = pickRow.rows[0];
-    if (!pick) {
-      return { success: false, error: 'Pick not found.' };
-    }
-    if (!(pick.drafter_owner_id === claimed.id || claimed.isAdmin)) {
-      return { success: false, error: 'Not your roster.' };
-    }
-    if (!pick.is_starter) {
-      const starterCount = await sql`
-        SELECT count(*) FROM ff_draft_picks dp
-        JOIN ff_drafts d ON d.id = dp.draft_id
-        WHERE dp.drafter_owner_id = ${pick.drafter_owner_id} AND dp.is_starter = true AND d.season = ${CURRENT_SEASON}
-      `;
-      if (Number(starterCount.rows[0].count) >= MAX_STARTERS) {
-        return { success: false, error: `You already have ${MAX_STARTERS} starters — bench one before adding another.` };
-      }
-    }
+  const pickRow = await sql`SELECT drafter_owner_id FROM ff_draft_picks WHERE id = ${pickId}`;
+  const pick = pickRow.rows[0];
+  if (!pick) {
+    return { success: false, error: 'Pick not found.' };
   }
-
-  const result = await sql`
-    UPDATE ff_draft_picks
-    SET is_starter = ${isStarter}
-    WHERE id = ${pickId} AND (drafter_owner_id = ${claimed.id} OR ${claimed.isAdmin})
-    RETURNING id
-  `;
-
-  if (result.rowCount === 0) {
+  if (!(pick.drafter_owner_id === claimed.id || claimed.isAdmin)) {
     return { success: false, error: 'Not your roster.' };
   }
 
+  const lockRow = await sql`SELECT lock_at FROM ff_nfl_week_locks WHERE season = ${CURRENT_SEASON} AND week = ${week}`;
+  const lockAt = lockRow.rows[0]?.lock_at as string | undefined;
+  if (lockAt && new Date(lockAt) <= new Date()) {
+    return { success: false, error: "This week's roster is locked." };
+  }
+
+  if (isStarter) {
+    const starterCount = await sql`
+      SELECT count(*) FROM ff_draft_picks dp
+      JOIN ff_drafts d ON d.id = dp.draft_id
+      WHERE dp.drafter_owner_id = ${pick.drafter_owner_id} AND d.season = ${CURRENT_SEASON} AND dp.id != ${pickId}
+        AND COALESCE(
+          (SELECT ws.is_starter FROM ff_weekly_starters ws
+           WHERE ws.pick_id = dp.id AND ws.season = ${CURRENT_SEASON} AND ws.week <= ${week}
+           ORDER BY ws.week DESC LIMIT 1),
+          dp.is_starter
+        ) = true
+    `;
+    if (Number(starterCount.rows[0].count) >= MAX_STARTERS) {
+      return { success: false, error: `You already have ${MAX_STARTERS} starters — bench one before adding another.` };
+    }
+  }
+
+  await sql`
+    INSERT INTO ff_weekly_starters (season, week, pick_id, is_starter)
+    VALUES (${CURRENT_SEASON}, ${week}, ${pickId}, ${isStarter})
+    ON CONFLICT (season, week, pick_id) DO UPDATE SET is_starter = EXCLUDED.is_starter, updated_at = now()
+  `;
+
   revalidatePath('/dashboard/my-roster');
+  revalidatePath('/dashboard/teams');
   return { success: true };
 }

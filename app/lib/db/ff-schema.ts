@@ -196,6 +196,36 @@ export const ffDraftPicks = pgTable('ff_draft_picks', {
   uniqueIndex('ff_draft_picks_draft_sleeper_team_uidx').on(table.draftId, table.sleeperLeagueKey, table.sleeperUserId),
 ]);
 
+// One row per (season, week, drafted pick) — explicit per-week starter/bench
+// designation. A week with no explicit row here isn't blank: the app falls
+// back to the most recently explicitly-set prior week, and if none exists,
+// to the legacy ff_draft_picks.is_starter flag (bootstrap only — that column
+// is no longer written to once this table is in use).
+export const ffWeeklyStarters = pgTable('ff_weekly_starters', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  season: integer('season').notNull(),
+  week: integer('week').notNull(),
+  pickId: uuid('pick_id').notNull().references(() => ffDraftPicks.id, { onDelete: 'cascade' }),
+  isStarter: boolean('is_starter').notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_weekly_starters_season_week_pick_uidx').on(table.season, table.week, table.pickId),
+]);
+
+// One row per (season, week) — the roster-lock time for that week, computed
+// as the 2nd real NFL game's kickoff (see app/lib/espn/schedule.ts), synced
+// from ESPN's public scoreboard API on a schedule (app/api/cron/sync-nfl-schedule).
+export const ffNflWeekLocks = pgTable('ff_nfl_week_locks', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  season: integer('season').notNull(),
+  week: integer('week').notNull(),
+  lockAt: timestamp('lock_at', { mode: 'string' }).notNull(),
+  gameCount: integer('game_count'),
+  syncedAt: timestamp('synced_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_nfl_week_locks_season_week_uidx').on(table.season, table.week),
+]);
+
 export const ffRosterRecords = pgTable('ff_roster_records', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   ownerId: uuid('owner_id').references(() => ffOwners.id, { onDelete: 'set null' }),
