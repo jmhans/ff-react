@@ -32,7 +32,7 @@ function HistoryList({ history }: { history: PickHistoryEntry[] }) {
     return <p className="text-sm text-gray-500">No picks made yet.</p>;
   }
   return (
-    <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
+    <ul className="max-h-80 space-y-2 overflow-y-auto pr-1 lg:max-h-[32rem]">
       {history.map((p) => (
         <li key={p.pickNumber} className="flex items-baseline gap-2 text-sm">
           <span className="w-8 shrink-0 text-xs text-gray-400">#{p.pickNumber}</span>
@@ -46,6 +46,13 @@ function HistoryList({ history }: { history: PickHistoryEntry[] }) {
   );
 }
 
+/**
+ * Roster/Pick History for the selected team. Visibility on mobile is
+ * decided one level up (DraftLiveRoom's Teams/Rosters tab switcher) — this
+ * component just renders its own Roster-vs-History sub-tabs, always open,
+ * at whatever width its container gives it (full-width on mobile when
+ * selected, a fixed sidebar on lg+).
+ */
 export default function RosterPanel({
   ownerName,
   picks,
@@ -55,60 +62,28 @@ export default function RosterPanel({
   picks: RosterEntry[];
   pickHistory: PickHistoryEntry[];
 }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('roster');
 
-  const tabBar = (
-    <div className="flex border-b border-gray-200">
-      {(['roster', 'history'] as const).map((t) => (
-        <button
-          key={t}
-          type="button"
-          onClick={() => setTab(t)}
-          className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${
-            tab === t
-              ? 'border-blue-600 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          {t === 'roster' ? 'Roster' : 'Pick History'}
-        </button>
-      ))}
-    </div>
-  );
-
-  const content = (
-    <div className="pt-3">
-      {tab === 'roster' ? <RosterList ownerName={ownerName} picks={picks} /> : <HistoryList history={pickHistory} />}
-    </div>
-  );
-
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm lg:w-80 lg:shrink-0">
-      {/* Mobile: collapsible */}
-      <div className="lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileOpen((v) => !v)}
-          className="flex w-full items-center justify-between p-4 text-left"
-        >
-          <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
-            {tab === 'roster' ? `Roster — ${ownerName ?? 'Select a team'}` : 'Pick History'}
-          </span>
-          <span className="text-gray-400">{mobileOpen ? '▲' : '▼'}</span>
-        </button>
-        {mobileOpen ? (
-          <div className="px-4 pb-4">
-            {tabBar}
-            {content}
-          </div>
-        ) : null}
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm lg:w-80 lg:shrink-0">
+      <div className="flex border-b border-gray-200">
+        {(['roster', 'history'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`px-3 py-2 text-xs font-medium border-b-2 -mb-px ${
+              tab === t
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t === 'roster' ? 'Roster' : 'Pick History'}
+          </button>
+        ))}
       </div>
-
-      {/* Desktop: always open */}
-      <div className="hidden p-5 lg:block">
-        {tabBar}
-        {content}
+      <div className="pt-3">
+        {tab === 'roster' ? <RosterList ownerName={ownerName} picks={picks} /> : <HistoryList history={pickHistory} />}
       </div>
     </div>
   );
