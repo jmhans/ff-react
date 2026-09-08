@@ -30,6 +30,9 @@ export type SleeperRoster = {
   owner_id: string | null;
   league_id: string;
   players: string[] | null;
+  starters: string[] | null;
+  reserve: string[] | null;
+  taxi: string[] | null;
   settings: Record<string, number>;
 };
 
@@ -91,9 +94,30 @@ export class SleeperClient {
     return response.data ?? {};
   }
 
-  /** Season-long (week omitted) or single-week per-player projections. */
+  /** Season-long per-player projections (week omitted from the path). */
   async getSeasonProjections(season: string): Promise<SleeperProjection[]> {
     const response = await this.rootClient.get(`/projections/nfl/${season}`, {
+      params: { season_type: 'regular' },
+    });
+    return response.data ?? [];
+  }
+
+  /** Single-week per-player projections. */
+  async getWeekProjections(season: string, week: number): Promise<SleeperProjection[]> {
+    const response = await this.rootClient.get(`/projections/nfl/${season}/${week}`, {
+      params: { season_type: 'regular' },
+    });
+    return response.data ?? [];
+  }
+
+  /**
+   * Single-week per-player ACTUAL stats. Note this is the non-versioned root
+   * path, not `/v1/stats/...` — the `/v1` version only returns rank
+   * placeholders (pos_rank_*, rank_*), no raw stat categories. This one
+   * returns a full { player, stats: {...} } entry per player.
+   */
+  async getWeekStats(season: string, week: number): Promise<Array<{ player: SleeperPlayer | null; stats: Record<string, number> }>> {
+    const response = await this.rootClient.get(`/stats/nfl/${season}/${week}`, {
       params: { season_type: 'regular' },
     });
     return response.data ?? [];
@@ -102,6 +126,17 @@ export class SleeperClient {
   async getUserByUsername(username: string): Promise<SleeperUser | null> {
     const response = await this.client.get(`/user/${username}`);
     return response.data ?? null;
+  }
+
+  /** Current NFL week/season — for figuring out "next matchup." */
+  async getNflState(): Promise<{ week: number; season: string; season_type: string }> {
+    const response = await this.client.get('/state/nfl');
+    return response.data;
+  }
+
+  async getMatchups(leagueId: string, week: number): Promise<Array<{ roster_id: number; matchup_id: number | null; points: number }>> {
+    const response = await this.client.get(`/league/${leagueId}/matchups/${week}`);
+    return response.data ?? [];
   }
 
   async getUserLeagues(userId: string, season: string, sport = 'nfl'): Promise<SleeperLeague[]> {

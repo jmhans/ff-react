@@ -1,17 +1,35 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import NavLinks from '@/app/ui/dashboard/nav-links';
 import AcmeLogo from '@/app/ui/acme-logo';
 import ProfileServer from '@/app/ui/clientProfile';
 import { LoginButton, LogoutButton } from '@/app/ui/auth/buttons';
 import { useUser } from "@auth0/nextjs-auth0";
-import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+
+const COLLAPSED_STORAGE_KEY = 'sidenav-collapsed';
 
 export default function SideNav() {
   const { user } = useUser();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Read persisted preference after mount (avoids SSR/client markup mismatch).
+  useEffect(() => {
+    if (localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true') {
+      setCollapsed(true);
+    }
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(COLLAPSED_STORAGE_KEY, String(next));
+      return next;
+    });
+  }
 
   return (
     <>
@@ -53,7 +71,7 @@ export default function SideNav() {
             </div>
 
             <div className="flex flex-col grow space-y-1 overflow-y-auto" onClick={() => setDrawerOpen(false)}>
-              <NavLinks />
+              <NavLinks collapsed={false} />
             </div>
 
             <div className="flex flex-col gap-2 pt-3 border-t border-gray-700 mt-3">
@@ -66,23 +84,49 @@ export default function SideNav() {
       )}
 
       {/* ── Desktop sidebar ────────────────────────────────────────────── */}
-      <div className="hidden md:flex h-full flex-col px-3 py-4 md:px-2">
-        <Link
-          className="mb-2 flex h-40 items-center justify-center rounded-md p-4"
-          href="/"
+      <div className={`hidden md:flex h-full flex-col px-3 py-4 md:px-2 transition-[width] ${collapsed ? 'md:w-16' : 'md:w-64'}`}>
+        <div className="mb-2 flex items-center justify-between">
+          <Link
+            className={`flex h-16 items-center justify-center rounded-md p-2 ${collapsed ? 'w-full' : 'flex-1'}`}
+            href="/"
+          >
+            {collapsed ? (
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-semibold text-white">
+                FF
+              </div>
+            ) : (
+              <div className="w-40 text-white">
+                <AcmeLogo />
+              </div>
+            )}
+          </Link>
+        </div>
+
+        <button
+          onClick={toggleCollapsed}
+          className="mb-2 flex items-center justify-center gap-2 rounded-md bg-gray-50 p-2 text-xs font-medium text-gray-600 hover:bg-sky-100 hover:text-blue-600"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <div className="w-40 text-white">
-            <AcmeLogo />
-          </div>
-        </Link>
+          {collapsed ? <ChevronRightIcon className="w-4 h-4" /> : (
+            <>
+              <ChevronLeftIcon className="w-4 h-4" />
+              <span>Collapse</span>
+            </>
+          )}
+        </button>
+
         <div className="flex flex-col grow space-y-2">
-          <NavLinks />
+          <NavLinks collapsed={collapsed} />
           <div className="h-auto w-full grow rounded-md bg-gray-50" />
-          <ProfileServer />
-          <div>
-            {!user && <LoginButton />}
-            {user && <LogoutButton />}
-          </div>
+          {!collapsed ? (
+            <>
+              <ProfileServer />
+              <div>
+                {!user && <LoginButton />}
+                {user && <LogoutButton />}
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </>

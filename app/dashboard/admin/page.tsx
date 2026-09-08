@@ -1,39 +1,12 @@
 import Link from 'next/link';
 import { lusitana } from '@/app/ui/fonts';
 import {
-  MapPinIcon,
-  UserGroupIcon,
-  TrophyIcon,
-  TicketIcon,
   UsersIcon,
   FunnelIcon,
+  CalendarDaysIcon,
 } from '@heroicons/react/24/outline';
 
 const adminSections = [
-  {
-    name: 'Golfers',
-    description: 'Manage golfer profiles and accounts.',
-    href: '/dashboard/golfers',
-    icon: UserGroupIcon,
-  },
-  {
-    name: 'Courses',
-    description: 'Add and edit golf courses.',
-    href: '/dashboard/golf/courses',
-    icon: MapPinIcon,
-  },
-  {
-    name: 'Play Golf',
-    description: 'Record and view golf rounds.',
-    href: '/dashboard/golf/rounds',
-    icon: TrophyIcon,
-  },
-  {
-    name: 'Raffles',
-    description: 'Manage raffles and prizes.',
-    href: '/dashboard/raffles',
-    icon: TicketIcon,
-  },
   {
     name: 'Owners',
     description: 'Manage FantasyFantasy owners and season assignments.',
@@ -45,6 +18,12 @@ const adminSections = [
     description: 'Compare league settings and draft details before selection.',
     href: '/dashboard/admin/league-picker',
     icon: FunnelIcon,
+  },
+  {
+    name: 'Schedule',
+    description: 'Generate or regenerate the Fantasy Fantasy weekly matchup schedule.',
+    href: '/dashboard/admin/schedule',
+    icon: CalendarDaysIcon,
   },
 ];
 

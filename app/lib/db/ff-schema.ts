@@ -4,7 +4,6 @@ import {
   jsonb,
   numeric,
   pgTable,
-  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -101,6 +100,7 @@ export const ffDrafts = pgTable('ff_drafts', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   season: integer('season').notNull(),
   rounds: integer('rounds'),
+  startedAt: timestamp('started_at', { mode: 'string' }), // null = order-setup phase, not yet started
   legacyMongoId: varchar('legacy_mongo_id', { length: 24 }),
   rawPayload: jsonb('raw_payload'),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
@@ -126,12 +126,17 @@ export const ffDraftPicks = pgTable('ff_draft_picks', {
   drafterOwnerId: uuid('drafter_owner_id').references(() => ffOwners.id, { onDelete: 'set null' }),
   ffTeamId: uuid('ff_team_id').references(() => ffTeams.id, { onDelete: 'set null' }),
   yahooTeamKey: varchar('yahoo_team_key', { length: 60 }),
+  sleeperLeagueKey: varchar('sleeper_league_key', { length: 40 }), // stores root_league_key
+  sleeperUserId: varchar('sleeper_user_id', { length: 40 }),
+  isStarter: boolean('is_starter').default(false).notNull(),
   pickedName: varchar('picked_name', { length: 180 }),
   pickedAt: timestamp('picked_at', { mode: 'string' }),
   legacyMongoPickId: varchar('legacy_mongo_pick_id', { length: 24 }),
   createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex('ff_draft_picks_legacy_mongo_pick_id_uidx').on(table.legacyMongoPickId),
+  uniqueIndex('ff_draft_picks_draft_pick_number_uidx').on(table.draftId, table.pickNumber),
+  uniqueIndex('ff_draft_picks_draft_sleeper_team_uidx').on(table.draftId, table.sleeperLeagueKey, table.sleeperUserId),
 ]);
 
 export const ffRosterRecords = pgTable('ff_roster_records', {
@@ -173,19 +178,66 @@ export const ffScoreSnapshots = pgTable('ff_score_snapshots', {
   syncedAt: timestamp('synced_at', { mode: 'string' }).defaultNow().notNull(),
 });
 
+// A row per scheduled owner-vs-owner matchup. awayOwnerId is nullable to
+// represent a bye week (odd active-owner count) — homeOwnerId always holds
+// the present owner in that case. status distinguishes "scheduled" from
+// "final" since points can legitimately be a real 0, unlike NULL.
 export const ffWeeklyMatchups = pgTable('ff_weekly_matchups', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   season: integer('season').notNull(),
   week: integer('week').notNull(),
   homeOwnerId: uuid('home_owner_id').notNull().references(() => ffOwners.id, { onDelete: 'cascade' }),
-  awayOwnerId: uuid('away_owner_id').notNull().references(() => ffOwners.id, { onDelete: 'cascade' }),
+  awayOwnerId: uuid('away_owner_id').references(() => ffOwners.id, { onDelete: 'cascade' }),
   homeWins: integer('home_wins').default(0).notNull(),
   awayWins: integer('away_wins').default(0).notNull(),
-  homePoints: integer('home_points').default(0).notNull(),
-  awayPoints: integer('away_points').default(0).notNull(),
+  homePoints: numeric('home_points'),
+  awayPoints: numeric('away_points'),
+  status: varchar('status', { length: 20 }).default('scheduled').notNull(),
   winnerOwnerId: uuid('winner_owner_id').references(() => ffOwners.id, { onDelete: 'set null' }),
   updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
-  primaryKey({ columns: [table.season, table.week, table.homeOwnerId, table.awayOwnerId] }),
+  uniqueIndex('ff_weekly_matchups_season_week_home_away_uidx').on(table.season, table.week, table.homeOwnerId, table.awayOwnerId),
+]);
+
+// One row per (season, week, player) — projected_stats is snapshotted before
+// the week's games start (whatever Sleeper is serving at snapshot time) and
+// actual_stats is filled in afterward, so this is the only source of
+// point-in-time projection data — Sleeper's own API only ever exposes
+// current/live state, not history.
+export const ffPlayerStatLog = pgTable('ff_player_stat_log', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  season: integer('season').notNull(),
+  week: integer('week').notNull(),
+  playerId: varchar('player_id', { length: 20 }).notNull(),
+  position: varchar('position', { length: 10 }),
+  projectedStats: jsonb('projected_stats'),
+  actualStats: jsonb('actual_stats'),
+  projectionSnapshotAt: timestamp('projection_snapshot_at', { mode: 'string' }),
+  actualRecordedAt: timestamp('actual_recorded_at', { mode: 'string' }),
+}, (table) => [
+  uniqueIndex('ff_player_stat_log_season_week_player_uidx').on(table.season, table.week, table.playerId),
+]);
+
+// One row per (season, week, drafted pick) — each team's live-Sleeper-derived
+// weekly matchup data (opponent, projections, win probability), refreshed by
+// a Vercel Cron job (see app/api/cron/refresh-matchup-projections) rather
+// than computed live on page load, since it requires several live Sleeper
+// API calls per team. Computed for every drafted pick regardless of current
+// is_starter status, so toggling starters mid-week doesn't leave gaps.
+// Actual/final scores are NOT cached here — those are fetched live where
+// shown (matchup detail page), since they matter more to stay fresh.
+export const ffTeamWinProbabilityCache = pgTable('ff_team_win_probability_cache', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  season: integer('season').notNull(),
+  week: integer('week').notNull(),
+  pickId: uuid('pick_id').notNull().references(() => ffDraftPicks.id, { onDelete: 'cascade' }),
+  winProb: numeric('win_prob'),
+  opponentName: varchar('opponent_name', { length: 180 }),
+  projFor: numeric('proj_for'),
+  projAgainst: numeric('proj_against'),
+  computedAt: timestamp('computed_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_team_win_probability_cache_season_week_pick_uidx').on(table.season, table.week, table.pickId),
 ]);
 
 export const ffWaiverClaims = pgTable('ff_waiver_claims', {

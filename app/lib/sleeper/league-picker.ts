@@ -31,9 +31,7 @@ function summarizeRosterPositions(positions: string[]): string | null {
 }
 
 /**
- * Build the same shape of summary row the Yahoo league picker produces, but
- * sourced from Sleeper — meant as a drop-in for that UI once we have real
- * league IDs to look up.
+ * Summary row for the League Picker admin UI, sourced from Sleeper.
  */
 export async function buildSleeperLeaguePickerRow(leagueId: string): Promise<SleeperLeaguePickerRow> {
   const client = new SleeperClient();

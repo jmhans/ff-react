@@ -18,7 +18,7 @@ export default async function Page() {
             Fantasy Fantasy
           </h1>
           <p className="text-white/90 max-w-2xl text-lg md:text-2xl mb-8 drop-shadow-md">
-            Draft real Yahoo fantasy teams into your own league and compete head-to-head all season.
+            Draft real Sleeper fantasy teams into your own league and compete head-to-head all season.
           </p>
 
           <a 

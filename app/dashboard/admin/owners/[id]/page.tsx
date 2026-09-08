@@ -1,7 +1,20 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { sql } from '@vercel/postgres';
-import { addOwnerSeason, removeOwnerSeason, updateOwnerTeamName } from '@/app/lib/ff-owner-actions';
+import {
+  addOwnerLogin,
+  addOwnerSeason,
+  removeOwnerLogin,
+  removeOwnerSeason,
+  updateOwnerTeamName,
+} from '@/app/lib/ff-owner-actions';
+
+type OwnerLogin = {
+  id: string;
+  auth0_user_id: string;
+  email: string | null;
+  created_at: string;
+};
 
 type OwnerDetail = {
   id: string;
@@ -36,6 +49,14 @@ export default async function OwnerDetailPage({ params }: OwnerDetailPageProps) 
 
   const seasons = owner.seasons ?? [];
 
+  const loginsResult = await sql<OwnerLogin>`
+    SELECT id, auth0_user_id, email, created_at
+    FROM ff_owner_logins
+    WHERE owner_id = ${owner.id}
+    ORDER BY created_at ASC
+  `;
+  const logins = loginsResult.rows;
+
   return (
     <main className="space-y-6">
       <div className="space-y-1">
@@ -68,6 +89,69 @@ export default async function OwnerDetailPage({ params }: OwnerDetailPageProps) 
             className="w-fit rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             Save team name
+          </button>
+        </form>
+      </section>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-gray-900">Linked Logins</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Auth0 identities linked to this owner — someone may log in with several over the years (Google, email/password,
+          etc.); all of them resolve to this same owner.
+        </p>
+
+        <div className="mt-4 space-y-2">
+          {logins.length > 0 ? (
+            logins.map((login) => (
+              <div
+                key={login.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-gray-900">{login.auth0_user_id}</p>
+                  {login.email ? <p className="truncate text-xs text-gray-500">{login.email}</p> : null}
+                </div>
+                <form action={removeOwnerLogin.bind(null, login.id)}>
+                  <input type="hidden" name="ownerId" value={owner.id} />
+                  <button type="submit" className="shrink-0 text-xs font-medium text-red-600 hover:underline">
+                    Remove
+                  </button>
+                </form>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-gray-500">No logins linked yet.</p>
+          )}
+        </div>
+
+        <form action={addOwnerLogin.bind(null, owner.id)} className="mt-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="auth0UserId" className="text-sm font-medium text-gray-700">
+              Auth0 user_id
+            </label>
+            <input
+              id="auth0UserId"
+              name="auth0UserId"
+              placeholder="google-oauth2|..."
+              className="mt-1 block w-64 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-400 focus:ring"
+            />
+          </div>
+          <div>
+            <label htmlFor="loginEmail" className="text-sm font-medium text-gray-700">
+              Email (optional, for reference)
+            </label>
+            <input
+              id="loginEmail"
+              name="email"
+              placeholder="name@example.com"
+              className="mt-1 block w-64 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-400 focus:ring"
+            />
+          </div>
+          <button
+            type="submit"
+            className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            Add login
           </button>
         </form>
       </section>

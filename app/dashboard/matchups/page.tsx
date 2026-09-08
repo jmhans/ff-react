@@ -1,10 +1,161 @@
-export default function MatchupsPage() {
+import Link from 'next/link';
+import { sql } from '@vercel/postgres';
+import { CURRENT_SEASON, getClaimedOwner } from '@/app/lib/ff-draft-helpers';
+import { SleeperClient } from '@/app/lib/sleeper/client';
+import WeekSelect from './WeekSelect';
+
+export const dynamic = 'force-dynamic';
+
+type MatchupRow = {
+  id: string;
+  week: number;
+  status: string;
+  home_points: string | null;
+  away_points: string | null;
+  winner_owner_id: string | null;
+  home_owner_id: string;
+  home_team_name: string | null;
+  home_display_name: string;
+  away_owner_id: string | null;
+  away_team_name: string | null;
+  away_display_name: string | null;
+};
+
+function pickDefaultWeek(weeks: number[], currentNflWeek: number): number {
+  if (weeks.includes(currentNflWeek)) return currentNflWeek;
+  const priorWeeks = weeks.filter((w) => w <= currentNflWeek);
+  if (priorWeeks.length > 0) return Math.max(...priorWeeks);
+  return weeks[0];
+}
+
+export default async function MatchupsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ week?: string }>;
+}) {
+  const params = (await searchParams) ?? {};
+
+  const weeksResult = await sql`
+    SELECT DISTINCT week FROM ff_weekly_matchups WHERE season = ${CURRENT_SEASON} ORDER BY week ASC
+  `;
+  const weeks = weeksResult.rows.map((r) => r.week as number);
+
+  if (weeks.length === 0) {
+    return (
+      <main className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Matchups</h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            The schedule hasn&apos;t been set yet — check Standings.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const client = new SleeperClient();
+  const state = await client.getNflState();
+
+  const requestedWeek = params.week ? Number(params.week) : null;
+  const selectedWeek =
+    requestedWeek && weeks.includes(requestedWeek) ? requestedWeek : pickDefaultWeek(weeks, state.week);
+
+  const claimed = await getClaimedOwner();
+
+  const matchupsResult = await sql<MatchupRow>`
+    SELECT
+      m.id, m.week, m.status, m.home_points, m.away_points, m.winner_owner_id,
+      m.home_owner_id, ho.team_name as home_team_name, ho.display_name as home_display_name,
+      m.away_owner_id, ao.team_name as away_team_name, ao.display_name as away_display_name
+    FROM ff_weekly_matchups m
+    JOIN ff_owners ho ON ho.id = m.home_owner_id
+    LEFT JOIN ff_owners ao ON ao.id = m.away_owner_id
+    WHERE m.season = ${CURRENT_SEASON} AND m.week = ${selectedWeek}
+    ORDER BY ho.display_name ASC
+  `;
+
+  const matchups = [...matchupsResult.rows].sort((a, b) => {
+    const aMine = claimed ? a.home_owner_id === claimed.id || a.away_owner_id === claimed.id : false;
+    const bMine = claimed ? b.home_owner_id === claimed.id || b.away_owner_id === claimed.id : false;
+    if (aMine === bMine) return 0;
+    return aMine ? -1 : 1;
+  });
+
   return (
-    <main className="space-y-4">
-      <h1 className="text-2xl font-semibold">Matchups</h1>
-      <p className="text-sm text-gray-600">
-        Weekly head-to-head results generated from each starter team Yahoo outcome.
-      </p>
+    <main className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Matchups</h1>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{CURRENT_SEASON} Fantasy Fantasy season.</p>
+        </div>
+        <WeekSelect weeks={weeks} selected={selectedWeek} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {matchups.map((m, i) => {
+          const isMine = claimed ? m.home_owner_id === claimed.id || m.away_owner_id === claimed.id : false;
+          const isBye = !m.away_owner_id;
+          const isFinal = m.status === 'final';
+
+          let cardClass =
+            'rounded-xl border p-4 shadow-sm bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700';
+          if (isMine && isFinal && !isBye) {
+            const won = claimed && m.winner_owner_id === claimed.id;
+            const lost = claimed && m.winner_owner_id && m.winner_owner_id !== claimed.id;
+            if (won) {
+              cardClass =
+                'rounded-xl border p-4 shadow-sm bg-emerald-50 border-emerald-300 dark:bg-emerald-950 dark:border-emerald-700';
+            } else if (lost) {
+              cardClass = 'rounded-xl border p-4 shadow-sm bg-red-50 border-red-300 dark:bg-red-950 dark:border-red-700';
+            }
+          }
+
+          const homeName = m.home_team_name ?? m.home_display_name;
+          const awayName = m.away_team_name ?? m.away_display_name;
+
+          if (isBye) {
+            return (
+              <div key={m.id} className={cardClass}>
+                {isMine ? (
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                    Your Matchup
+                  </p>
+                ) : null}
+                <p className="font-medium text-gray-900 dark:text-gray-100">{homeName}</p>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Bye week</p>
+                {isFinal && m.home_points != null ? (
+                  <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{Number(m.home_points).toFixed(1)} pts</p>
+                ) : null}
+              </div>
+            );
+          }
+
+          return (
+            <Link key={m.id} href={`/dashboard/matchups/${m.id}`} className={`block transition hover:opacity-90 ${cardClass}`}>
+              {isMine ? (
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                  Your Matchup
+                </p>
+              ) : null}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{homeName}</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {isFinal && m.home_points != null ? Number(m.home_points).toFixed(1) : '-'}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{awayName}</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {isFinal && m.away_points != null ? Number(m.away_points).toFixed(1) : '-'}
+                  </p>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{isFinal ? 'Final' : 'Scheduled'}</p>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </main>
   );
 }

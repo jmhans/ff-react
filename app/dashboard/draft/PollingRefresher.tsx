@@ -1,0 +1,16 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+/** Keeps the live draft room fresh across everyone's open tabs without manual reload. */
+export default function PollingRefresher({ intervalMs = 4000 }: { intervalMs?: number }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const id = setInterval(() => router.refresh(), intervalMs);
+    return () => clearInterval(id);
+  }, [router, intervalMs]);
+
+  return null;
+}
