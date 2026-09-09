@@ -1,11 +1,25 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
-export type RosterEntry = { pickNumber: number; teamName: string };
-export type PickHistoryEntry = { pickNumber: number; ownerName: string; teamName: string };
+export type RosterEntry = { pickNumber: number; teamName: string; leagueKey: string; userId: string };
+export type PickHistoryEntry = { pickNumber: number; ownerName: string; teamName: string; leagueKey: string; userId: string };
 
 type Tab = 'roster' | 'history';
+
+function TeamLink({ leagueKey, userId, children }: { leagueKey: string; userId: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={`/dashboard/sleeper-pool/${leagueKey}/${userId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 hover:text-blue-800 hover:underline"
+    >
+      {children}
+    </Link>
+  );
+}
 
 function RosterList({ ownerName, picks }: { ownerName: string | null; picks: RosterEntry[] }) {
   return (
@@ -16,7 +30,9 @@ function RosterList({ ownerName, picks }: { ownerName: string | null; picks: Ros
           {picks.map((p) => (
             <li key={p.pickNumber} className="flex items-baseline gap-2 text-sm">
               <span className="w-8 shrink-0 text-xs text-gray-400">#{p.pickNumber}</span>
-              <span className="text-gray-800">{p.teamName}</span>
+              <span className="text-gray-800">
+                <TeamLink leagueKey={p.leagueKey} userId={p.userId}>{p.teamName}</TeamLink>
+              </span>
             </li>
           ))}
         </ul>
@@ -37,7 +53,9 @@ function HistoryList({ history }: { history: PickHistoryEntry[] }) {
         <li key={p.pickNumber} className="flex items-baseline gap-2 text-sm">
           <span className="w-8 shrink-0 text-xs text-gray-400">#{p.pickNumber}</span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-gray-800">{p.teamName}</span>
+            <span className="block truncate text-gray-800">
+              <TeamLink leagueKey={p.leagueKey} userId={p.userId}>{p.teamName}</TeamLink>
+            </span>
             <span className="block truncate text-xs text-gray-500">{p.ownerName}</span>
           </span>
         </li>
@@ -46,13 +64,6 @@ function HistoryList({ history }: { history: PickHistoryEntry[] }) {
   );
 }
 
-/**
- * Roster/Pick History for the selected team. Visibility on mobile is
- * decided one level up (DraftLiveRoom's Teams/Rosters tab switcher) — this
- * component just renders its own Roster-vs-History sub-tabs, always open,
- * at whatever width its container gives it (full-width on mobile when
- * selected, a fixed sidebar on lg+).
- */
 export default function RosterPanel({
   ownerName,
   picks,

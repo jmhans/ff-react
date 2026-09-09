@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { makePick } from '@/app/lib/ff-draft-actions';
 
 export type AvailableTeamRow = {
@@ -165,7 +166,14 @@ export default function AvailableTeamsPanel({
                 </td>
                 <td className="px-3 py-3 font-medium text-gray-900">{row.overallRank ?? '-'}</td>
                 <td className="px-3 py-3">
-                  <p className="font-medium text-gray-900">{row.teamName}</p>
+                  <Link
+                    href={`/dashboard/sleeper-pool/${row.leagueKey}/${row.userId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    {row.teamName}
+                  </Link>
                 </td>
                 <td className="px-3 py-3 text-gray-700">{row.leagueName}</td>
                 <td className="px-3 py-3">{row.projectedPoints != null ? row.projectedPoints.toFixed(1) : '-'}</td>

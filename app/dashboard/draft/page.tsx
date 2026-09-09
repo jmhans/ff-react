@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { sql } from '@vercel/postgres';
 import { auth0 } from '@/app/lib/auth0';
 import { LoginButton } from '@/app/ui/auth/buttons';
@@ -121,6 +122,8 @@ export default async function DraftPage() {
     rostersByOwnerId[ownerId].push({
       pickNumber: p.pick_number as number,
       teamName: p.picked_name as string,
+      leagueKey: p.sleeper_league_key as string,
+      userId: p.sleeper_user_id as string,
     });
   }
 
@@ -131,6 +134,8 @@ export default async function DraftPage() {
       pickNumber: p.pick_number as number,
       ownerName: ownerNamesById[p.drafter_owner_id as string] ?? 'Unknown',
       teamName: p.picked_name as string,
+      leagueKey: p.sleeper_league_key as string,
+      userId: p.sleeper_user_id as string,
     }));
 
   const isComplete = currentPickNumber > totalPicks;
@@ -150,7 +155,14 @@ export default async function DraftPage() {
                 {(rostersByOwnerId[ownerId] ?? []).map((p) => (
                   <li key={p.pickNumber} className="text-sm text-gray-700">
                     <span className="mr-1 text-xs text-gray-400">#{p.pickNumber}</span>
-                    {p.teamName}
+                    <Link
+                      href={`/dashboard/sleeper-pool/${p.leagueKey}/${p.userId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {p.teamName}
+                    </Link>
                   </li>
                 ))}
               </ul>
