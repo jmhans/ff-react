@@ -4,6 +4,7 @@ import { CURRENT_SEASON, getClaimedOwner, getNextEditableWeek } from '@/app/lib/
 import { SleeperClient } from '@/app/lib/sleeper/client';
 import ClaimOwnerBanner from '@/app/dashboard/draft/ClaimOwnerBanner';
 import RosterView from '@/app/dashboard/teams/RosterView';
+import PushNotificationToggle from './PushNotificationToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,13 +48,18 @@ export default async function MyRosterPage({
   }
 
   return (
-    <RosterView
-      ownerId={claimed.id}
-      ownerName={claimed.displayName}
-      teamName={claimed.teamName}
-      canEdit={true}
-      week={week}
-      basePath="/dashboard/my-roster"
-    />
+    <>
+      <RosterView
+        ownerId={claimed.id}
+        ownerName={claimed.displayName}
+        teamName={claimed.teamName}
+        canEdit={true}
+        week={week}
+        basePath="/dashboard/my-roster"
+      />
+      <div className="mt-5">
+        <PushNotificationToggle />
+      </div>
+    </>
   );
 }

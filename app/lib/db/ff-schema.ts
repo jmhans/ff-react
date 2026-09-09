@@ -42,6 +42,21 @@ export const ffOwnerLogins = pgTable('ff_owner_logins', {
   uniqueIndex('ff_owner_logins_auth0_user_id_uidx').on(table.auth0UserId),
 ]);
 
+// One row per subscribed browser/device (an owner can have several — phone,
+// laptop, etc.). Standard Web Push subscription shape: endpoint is the
+// browser's push service URL, p256dh/auth are the encryption keys needed to
+// send an encrypted payload to it (see app/lib/push.ts).
+export const ffPushSubscriptions = pgTable('ff_push_subscriptions', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  ownerId: uuid('owner_id').notNull().references(() => ffOwners.id, { onDelete: 'cascade' }),
+  endpoint: text('endpoint').notNull(),
+  p256dh: varchar('p256dh', { length: 255 }).notNull(),
+  auth: varchar('auth', { length: 255 }).notNull(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_push_subscriptions_endpoint_uidx').on(table.endpoint),
+]);
+
 export const ffLeagues = pgTable('ff_leagues', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   season: integer('season').notNull(),
