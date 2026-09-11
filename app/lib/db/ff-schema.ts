@@ -322,7 +322,7 @@ export const ffPlayerStatLog = pgTable('ff_player_stat_log', {
 
 // One row per (season, week, drafted pick) — each team's live-Sleeper-derived
 // weekly matchup data (opponent, projections, win probability), refreshed by
-// a Vercel Cron job (see app/api/cron/refresh-matchup-projections) rather
+// a Vercel Cron job (see app/api/cron/daily-refresh) rather
 // than computed live on page load, since it requires several live Sleeper
 // API calls per team. Computed for every drafted pick regardless of current
 // is_starter status, so toggling starters mid-week doesn't leave gaps.

@@ -33,10 +33,11 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
   const ownerRow = ownerResult.rows[0];
   const ownerName = ownerRow ? ((ownerRow.team_name as string | null) ?? (ownerRow.display_name as string)) : 'Unknown';
 
-  // win_prob comes from ff_team_win_probability_cache — refreshed by a Vercel
-  // Cron job (app/api/cron/refresh-matchup-projections), not computed live
-  // here, since it takes several live Sleeper API calls per team. Actual
-  // points are still fetched live below — that's cheap and matters more to
+  // win_prob comes from ff_team_win_probability_cache — refreshed by the
+  // daily cron (app/api/cron/daily-refresh) and by the manual "Refresh Now"
+  // button, not computed live here, since it takes several live Sleeper API
+  // calls per team. Actual points are still fetched live below — that's
+  // cheap and matters more to
   // stay fresh while games are in progress.
   const picks = await sql`
     SELECT dp.id as pick_id, dp.picked_name, dp.sleeper_league_key, dp.sleeper_user_id,
