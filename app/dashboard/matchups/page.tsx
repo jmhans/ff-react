@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { sql } from '@vercel/postgres';
 import { CURRENT_SEASON, getClaimedOwner, pickDefaultWeek } from '@/app/lib/ff-draft-helpers';
 import { SleeperClient } from '@/app/lib/sleeper/client';
+import { computeMatchupDetail } from '@/app/lib/ff-matchup-detail';
 import WeekSelect from './WeekSelect';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,23 @@ export default async function MatchupsPage({
     return aMine ? -1 : 1;
   });
 
+  // Live totals + win probability for in-progress matchups — finalized ones
+  // already have their real home_points/away_points from finalize-week.ts,
+  // so there's no need to recompute those live.
+  const liveDetailByMatchupId = new Map<string, { homeLive: number | null; awayLive: number | null; winProbHome: number | null }>();
+  await Promise.all(
+    matchups
+      .filter((m) => m.status !== 'final' && m.away_owner_id)
+      .map(async (m) => {
+        const detail = await computeMatchupDetail(m.home_owner_id, m.away_owner_id as string, selectedWeek);
+        liveDetailByMatchupId.set(m.id, {
+          homeLive: detail.home.actualTotal,
+          awayLive: detail.away.actualTotal,
+          winProbHome: detail.winProbHome,
+        });
+      }),
+  );
+
   return (
     <main className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -105,6 +123,10 @@ export default async function MatchupsPage({
 
           const homeName = m.home_team_name ?? m.home_display_name;
           const awayName = m.away_team_name ?? m.away_display_name;
+          const live = liveDetailByMatchupId.get(m.id);
+          const homeScore = isFinal ? (m.home_points != null ? Number(m.home_points) : null) : live?.homeLive ?? null;
+          const awayScore = isFinal ? (m.away_points != null ? Number(m.away_points) : null) : live?.awayLive ?? null;
+          const awayWinProb = !isFinal && live?.winProbHome != null ? 1 - live.winProbHome : null;
 
           if (isBye) {
             return (
@@ -133,17 +155,27 @@ export default async function MatchupsPage({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-gray-900 dark:text-gray-100">{homeName}</p>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">
-                    {isFinal && m.home_points != null ? Number(m.home_points).toFixed(1) : '-'}
-                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">{homeScore != null ? homeScore.toFixed(1) : '-'}</p>
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-gray-900 dark:text-gray-100">{awayName}</p>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">
-                    {isFinal && m.away_points != null ? Number(m.away_points).toFixed(1) : '-'}
-                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">{awayScore != null ? awayScore.toFixed(1) : '-'}</p>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{isFinal ? 'Final' : 'Scheduled'}</p>
+                {awayWinProb != null ? (
+                  <div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                      <div
+                        className="h-full rounded-full bg-blue-500"
+                        style={{ width: `${(awayWinProb * 100).toFixed(1)}%` }}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {awayName} {(awayWinProb * 100).toFixed(0)}% to win
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{isFinal ? 'Final' : 'Live'}</p>
+                )}
               </div>
             </Link>
           );

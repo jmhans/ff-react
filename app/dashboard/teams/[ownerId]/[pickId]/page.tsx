@@ -50,23 +50,32 @@ export default async function TeamRosterPage({
             <p className="mt-1 text-sm font-medium text-gray-900">{weekly?.opponentName ?? '-'}</p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-gray-500">Proj For</p>
-            <p className="mt-1 text-sm font-medium text-gray-900">{weekly?.projFor != null ? weekly.projFor.toFixed(1) : '-'}</p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Live For</p>
+            <p className="mt-1 text-sm font-medium text-gray-900">
+              {weekly?.liveFor != null ? weekly.liveFor.toFixed(1) : '-'}
+              {weekly?.projFor != null ? <span className="ml-1 text-xs text-gray-400">(opened {weekly.projFor.toFixed(1)})</span> : null}
+            </p>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-wide text-gray-500">Proj Against</p>
-            <p className="mt-1 text-sm font-medium text-gray-900">{weekly?.projAgainst != null ? weekly.projAgainst.toFixed(1) : '-'}</p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Live Against</p>
+            <p className="mt-1 text-sm font-medium text-gray-900">
+              {weekly?.liveAgainst != null ? weekly.liveAgainst.toFixed(1) : '-'}
+              {weekly?.projAgainst != null ? <span className="ml-1 text-xs text-gray-400">(opened {weekly.projAgainst.toFixed(1)})</span> : null}
+            </p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-gray-500">Win %</p>
-            <p className="mt-1 text-sm font-medium text-gray-900">{weekly?.winProb != null ? `${(weekly.winProb * 100).toFixed(0)}%` : '-'}</p>
+            <p className="mt-1 text-sm font-medium text-gray-900">
+              {weekly?.liveWinProb != null ? `${(weekly.liveWinProb * 100).toFixed(0)}%` : '-'}
+              {weekly?.winProb != null ? <span className="ml-1 text-xs text-gray-400">(opened {(weekly.winProb * 100).toFixed(0)}%)</span> : null}
+            </p>
           </div>
         </div>
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 p-4">
-          <h2 className="font-semibold text-gray-900">Projected Starting Lineup</h2>
+          <h2 className="font-semibold text-gray-900">Starting Lineup</h2>
         </div>
         {weekly?.ourStarters?.length ? (
           <div className="overflow-x-auto">
@@ -75,7 +84,8 @@ export default async function TeamRosterPage({
                 <tr>
                   <th className="px-4 py-3">Slot</th>
                   <th className="px-4 py-3">Player</th>
-                  <th className="px-4 py-3">Proj Points</th>
+                  <th className="px-4 py-3">Points</th>
+                  <th className="px-4 py-3">Proj</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -83,7 +93,11 @@ export default async function TeamRosterPage({
                   <tr key={starter.playerId}>
                     <td className="px-4 py-2.5 text-gray-600">{starter.slot}</td>
                     <td className="px-4 py-2.5 text-gray-900">{starter.name}</td>
-                    <td className="px-4 py-2.5 text-gray-900">{starter.points.toFixed(1)}</td>
+                    <td className="px-4 py-2.5 text-gray-900">
+                      {starter.livePoints.toFixed(1)}
+                      {starter.isActual ? <span className="ml-1 text-xs text-green-600">final</span> : null}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-500">{starter.points.toFixed(1)}</td>
                   </tr>
                 ))}
               </tbody>

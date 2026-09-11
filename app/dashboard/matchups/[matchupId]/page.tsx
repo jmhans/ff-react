@@ -30,17 +30,22 @@ function SideCard({ side }: { side: OwnerMatchupSide }) {
                 <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{t.pickedName}</td>
                 <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300">
                   {t.winProb != null ? `${(t.winProb * 100).toFixed(0)}%` : '-'}
+                  {t.openingWinProb != null ? (
+                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">
+                      (opened {(t.openingWinProb * 100).toFixed(0)}%)
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300">
                   {t.actualPoints != null ? t.actualPoints.toFixed(1) : '-'}
                   {t.projFor != null ? (
-                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">({t.projFor.toFixed(1)})</span>
+                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">(proj final {t.projFor.toFixed(1)})</span>
                   ) : null}
                 </td>
                 <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300">
                   {t.actualAgainst != null ? t.actualAgainst.toFixed(1) : '-'}
                   {t.projAgainst != null ? (
-                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">({t.projAgainst.toFixed(1)})</span>
+                    <span className="ml-1 text-xs text-gray-400 dark:text-gray-500">(proj final {t.projAgainst.toFixed(1)})</span>
                   ) : null}
                 </td>
               </tr>
@@ -85,6 +90,19 @@ export default async function MatchupDetailPage({
           {' — '}
           {detail.away.ownerName} {detail.winProbHome != null ? `${((1 - detail.winProbHome) * 100).toFixed(0)}%` : '-'}
         </p>
+        {detail.winProbHome != null ? (
+          <div className="mx-auto mt-3 max-w-xs">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+              <div
+                className="h-full rounded-full bg-blue-500"
+                style={{ width: `${((1 - detail.winProbHome) * 100).toFixed(1)}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {detail.away.ownerName} {((1 - detail.winProbHome) * 100).toFixed(0)}% to win
+            </p>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

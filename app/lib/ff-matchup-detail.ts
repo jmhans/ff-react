@@ -11,6 +11,9 @@ export type TeamLine = {
   projAgainst: number | null;
   actualPoints: number | null;
   actualAgainst: number | null;
+  openingWinProb: number | null;
+  openingProjFor: number | null;
+  openingProjAgainst: number | null;
 };
 
 export type OwnerMatchupSide = {
@@ -41,7 +44,8 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
   // stay fresh while games are in progress.
   const picks = await sql`
     SELECT dp.id as pick_id, dp.picked_name, dp.sleeper_league_key, dp.sleeper_user_id,
-           c.win_prob, c.proj_for, c.proj_against
+           c.win_prob, c.proj_for, c.proj_against,
+           c.opening_win_prob, c.opening_proj_for, c.opening_proj_against
     FROM ff_draft_picks dp
     JOIN ff_drafts d ON d.id = dp.draft_id AND d.season = ${CURRENT_SEASON}
     LEFT JOIN ff_team_win_probability_cache c
@@ -56,32 +60,33 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
     ORDER BY dp.picked_name ASC
   `;
 
+  const rowsWithActuals = await Promise.all(
+    picks.rows.map(async (p) => {
+      const leagueKey = p.sleeper_league_key as string | null;
+      const sleeperUserId = p.sleeper_user_id as string | null;
+      if (!leagueKey || !sleeperUserId) return { p, actualPoints: null, actualAgainst: null };
+      const actual = await getActualPointsWithOpponent(leagueKey, sleeperUserId, week);
+      return { p, actualPoints: actual?.ourPoints ?? null, actualAgainst: actual?.opponentPoints ?? null };
+    }),
+  );
+
   const teams: TeamLine[] = [];
   const winProbs: number[] = [];
   let expectedWins = 0;
   let actualTotal = 0;
   let hasActual = false;
 
-  for (const p of picks.rows) {
-    const leagueKey = p.sleeper_league_key as string | null;
-    const sleeperUserId = p.sleeper_user_id as string | null;
+  for (const { p, actualPoints, actualAgainst } of rowsWithActuals) {
     const winProb = p.win_prob != null ? Number(p.win_prob) : null;
-    let actualPoints: number | null = null;
-    let actualAgainst: number | null = null;
 
     if (winProb != null) {
       winProbs.push(winProb);
       expectedWins += winProb;
     }
 
-    if (leagueKey && sleeperUserId) {
-      const actual = await getActualPointsWithOpponent(leagueKey, sleeperUserId, week);
-      actualPoints = actual?.ourPoints ?? null;
-      actualAgainst = actual?.opponentPoints ?? null;
-      if (actualPoints !== null) {
-        actualTotal += actualPoints;
-        hasActual = true;
-      }
+    if (actualPoints !== null) {
+      actualTotal += actualPoints;
+      hasActual = true;
     }
 
     teams.push({
@@ -92,6 +97,9 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
       projAgainst: p.proj_against != null ? Number(p.proj_against) : null,
       actualPoints,
       actualAgainst,
+      openingWinProb: p.opening_win_prob != null ? Number(p.opening_win_prob) : null,
+      openingProjFor: p.opening_proj_for != null ? Number(p.opening_proj_for) : null,
+      openingProjAgainst: p.opening_proj_against != null ? Number(p.opening_proj_against) : null,
     });
   }
 

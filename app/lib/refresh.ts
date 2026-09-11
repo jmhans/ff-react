@@ -98,19 +98,33 @@ export async function refreshAllWinProbabilities(): Promise<{ week: number; upda
     const results = await Promise.allSettled(
       batch.map(async (p) => {
         const weekly = await computeWeeklyMatchup(p.sleeper_league_key as string, p.sleeper_user_id as string);
+        // win_prob/proj_for/proj_against carry the LIVE (actual + remaining
+        // projection) numbers and are overwritten on every refresh.
+        // opening_* carries the pure pre-game projection — the COALESCE in
+        // the DO UPDATE SET below means the first refresh that sees a NULL
+        // opening_* for this (season, week, pick) fills it in, and every
+        // refresh after that leaves it untouched (freezing it).
         await sql`
-          INSERT INTO ff_team_win_probability_cache (season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at)
+          INSERT INTO ff_team_win_probability_cache (
+            season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
+            opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
+          )
           VALUES (
             ${CURRENT_SEASON}, ${week}, ${p.pick_id},
-            ${weekly?.winProb ?? null}, ${weekly?.opponentName ?? null},
-            ${weekly?.projFor ?? null}, ${weekly?.projAgainst ?? null}, now()
+            ${weekly?.liveWinProb ?? null}, ${weekly?.opponentName ?? null},
+            ${weekly?.liveFor ?? null}, ${weekly?.liveAgainst ?? null}, now(),
+            ${weekly?.winProb ?? null}, ${weekly?.projFor ?? null}, ${weekly?.projAgainst ?? null}, now()
           )
           ON CONFLICT (season, week, pick_id) DO UPDATE SET
             win_prob = EXCLUDED.win_prob,
             opponent_name = EXCLUDED.opponent_name,
             proj_for = EXCLUDED.proj_for,
             proj_against = EXCLUDED.proj_against,
-            computed_at = now()
+            computed_at = now(),
+            opening_win_prob = COALESCE(ff_team_win_probability_cache.opening_win_prob, EXCLUDED.opening_win_prob),
+            opening_proj_for = COALESCE(ff_team_win_probability_cache.opening_proj_for, EXCLUDED.opening_proj_for),
+            opening_proj_against = COALESCE(ff_team_win_probability_cache.opening_proj_against, EXCLUDED.opening_proj_against),
+            opening_computed_at = COALESCE(ff_team_win_probability_cache.opening_computed_at, EXCLUDED.opening_computed_at)
         `;
       }),
     );

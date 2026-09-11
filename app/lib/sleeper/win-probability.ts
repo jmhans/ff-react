@@ -26,11 +26,14 @@ function sampleNormal(mean: number, sd: number): number {
   return Math.max(0, mean + z * sd);
 }
 
-function simulateTeamTotal(starters: StarterPick[]): number {
+function simulateTeamTotal(starters: StarterPick[], useLive: boolean): number {
   let total = 0;
   for (const starter of starters) {
-    const cv = (starter.position ? POSITION_CV[starter.position] : undefined) ?? DEFAULT_CV;
-    total += sampleNormal(starter.points, starter.points * cv);
+    const points = useLive ? starter.livePoints : starter.points;
+    // Once a player's actual points are known, they're locked in — no more
+    // variance to simulate for that player.
+    const cv = useLive && starter.isActual ? 0 : (starter.position ? POSITION_CV[starter.position] : undefined) ?? DEFAULT_CV;
+    total += sampleNormal(points, points * cv);
   }
   return total;
 }
@@ -39,18 +42,21 @@ function simulateTeamTotal(starters: StarterPick[]): number {
  * Monte Carlo win probability for "our" lineup vs. an opponent's, sampling
  * each starter independently (normal, truncated at 0) around their own
  * projection. Returns our win probability in [0, 1]; ties split 50/50.
+ * Pass useLive=true to simulate off each starter's live (actual-if-played,
+ * else projected) points instead of the pure pre-game projection.
  */
 export function simulateWinProbability(
   ourStarters: StarterPick[],
   theirStarters: StarterPick[],
   trials = 5000,
+  useLive = false,
 ): number | null {
   if (ourStarters.length === 0 || theirStarters.length === 0) return null;
 
   let wins = 0;
   for (let i = 0; i < trials; i++) {
-    const ours = simulateTeamTotal(ourStarters);
-    const theirs = simulateTeamTotal(theirStarters);
+    const ours = simulateTeamTotal(ourStarters, useLive);
+    const theirs = simulateTeamTotal(theirStarters, useLive);
     if (ours > theirs) wins += 1;
     else if (ours === theirs) wins += 0.5;
   }

@@ -328,6 +328,11 @@ export const ffPlayerStatLog = pgTable('ff_player_stat_log', {
 // is_starter status, so toggling starters mid-week doesn't leave gaps.
 // Actual/final scores are NOT cached here — those are fetched live where
 // shown (matchup detail page), since they matter more to stay fresh.
+// win_prob/proj_for/proj_against are LIVE — blended actual (for players whose
+// games have started/finished) + remaining projection (for players who
+// haven't played yet) — overwritten on every refresh. opening_* is the pure
+// pre-game projection, written once (first refresh of the week) and never
+// overwritten again — see app/lib/refresh.ts.
 export const ffTeamWinProbabilityCache = pgTable('ff_team_win_probability_cache', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   season: integer('season').notNull(),
@@ -338,6 +343,10 @@ export const ffTeamWinProbabilityCache = pgTable('ff_team_win_probability_cache'
   projFor: numeric('proj_for'),
   projAgainst: numeric('proj_against'),
   computedAt: timestamp('computed_at', { mode: 'string' }).defaultNow().notNull(),
+  openingWinProb: numeric('opening_win_prob'),
+  openingProjFor: numeric('opening_proj_for'),
+  openingProjAgainst: numeric('opening_proj_against'),
+  openingComputedAt: timestamp('opening_computed_at', { mode: 'string' }),
 }, (table) => [
   uniqueIndex('ff_team_win_probability_cache_season_week_pick_uidx').on(table.season, table.week, table.pickId),
 ]);
