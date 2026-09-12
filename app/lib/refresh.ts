@@ -48,19 +48,34 @@ export async function syncAllLeagueRosters(): Promise<{ synced: number; skipped:
       const teamNameByUserId = new Map(users.map((u) => [u.user_id, u.metadata?.team_name || u.display_name]));
 
       for (const roster of rosters) {
+        // Sleeper splits points into whole + decimal-cents parts.
+        const fptsFor = roster.settings?.fpts != null ? roster.settings.fpts + (roster.settings.fpts_decimal ?? 0) / 100 : null;
+        const fptsAgainst =
+          roster.settings?.fpts_against != null ? roster.settings.fpts_against + (roster.settings.fpts_against_decimal ?? 0) / 100 : null;
+
         await sql`
-          INSERT INTO ff_sleeper_rosters (league_key, roster_id, sleeper_user_id, display_name, team_name, player_ids, synced_at)
+          INSERT INTO ff_sleeper_rosters (
+            league_key, roster_id, sleeper_user_id, display_name, team_name, player_ids,
+            wins, losses, ties, fpts_for, fpts_against, synced_at
+          )
           VALUES (
             ${leagueKey}, ${roster.roster_id}, ${roster.owner_id ?? null},
             ${roster.owner_id ? displayNameByUserId.get(roster.owner_id) ?? null : null},
             ${roster.owner_id ? teamNameByUserId.get(roster.owner_id) ?? null : null},
-            ${JSON.stringify(roster.players ?? [])}::jsonb, now()
+            ${JSON.stringify(roster.players ?? [])}::jsonb,
+            ${roster.settings?.wins ?? null}, ${roster.settings?.losses ?? null}, ${roster.settings?.ties ?? null},
+            ${fptsFor}, ${fptsAgainst}, now()
           )
           ON CONFLICT (league_key, roster_id) DO UPDATE SET
             sleeper_user_id = EXCLUDED.sleeper_user_id,
             display_name = EXCLUDED.display_name,
             team_name = EXCLUDED.team_name,
             player_ids = EXCLUDED.player_ids,
+            wins = EXCLUDED.wins,
+            losses = EXCLUDED.losses,
+            ties = EXCLUDED.ties,
+            fpts_for = EXCLUDED.fpts_for,
+            fpts_against = EXCLUDED.fpts_against,
             synced_at = now()
         `;
       }
@@ -142,6 +157,62 @@ export async function runDailyRefresh() {
   const rosters = await syncAllLeagueRosters();
   const winProbs = await refreshAllWinProbabilities();
   return { rosters, winProbs };
+}
+
+/**
+ * Same live win-probability computation as refreshAllWinProbabilities, but
+ * for EVERY team in the pool (drafted or not) rather than just drafted
+ * picks — powers the Sleeper Team Pool in-season view, including for
+ * teams someone might want to pick up. Admin-triggered only (see
+ * app/lib/ff-admin-refresh-actions.ts) — not part of the automatic daily
+ * cron. Reads from ff_sleeper_rosters (already synced by syncAllLeagueRosters)
+ * rather than the Sleeper API directly, so run a roster sync first if it's
+ * been a while.
+ */
+export async function refreshPoolWinProbabilities(): Promise<{ week: number; updated: number; failed: number; total: number }> {
+  const client = new SleeperClient();
+  const state = await client.getNflState();
+  const week = state.week;
+
+  const teams = await sql`
+    SELECT league_key, sleeper_user_id
+    FROM ff_sleeper_rosters
+    WHERE sleeper_user_id IS NOT NULL
+  `;
+
+  let updated = 0;
+  let failed = 0;
+
+  for (let i = 0; i < teams.rows.length; i += WIN_PROB_BATCH_SIZE) {
+    const batch = teams.rows.slice(i, i + WIN_PROB_BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (t) => {
+        const leagueKey = t.league_key as string;
+        const sleeperUserId = t.sleeper_user_id as string;
+        const weekly = await computeWeeklyMatchup(leagueKey, sleeperUserId);
+        await sql`
+          INSERT INTO ff_pool_team_win_probability_cache (season, week, league_key, sleeper_user_id, win_prob, opponent_name, proj_for, proj_against, computed_at)
+          VALUES (
+            ${CURRENT_SEASON}, ${week}, ${leagueKey}, ${sleeperUserId},
+            ${weekly?.liveWinProb ?? null}, ${weekly?.opponentName ?? null},
+            ${weekly?.liveFor ?? null}, ${weekly?.liveAgainst ?? null}, now()
+          )
+          ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
+            win_prob = EXCLUDED.win_prob,
+            opponent_name = EXCLUDED.opponent_name,
+            proj_for = EXCLUDED.proj_for,
+            proj_against = EXCLUDED.proj_against,
+            computed_at = now()
+        `;
+      }),
+    );
+    for (const result of results) {
+      if (result.status === 'fulfilled') updated += 1;
+      else failed += 1;
+    }
+  }
+
+  return { week, updated, failed, total: teams.rows.length };
 }
 
 /**

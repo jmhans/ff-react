@@ -3,6 +3,8 @@
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import { CURRENT_SEASON, getClaimedOwner } from '@/app/lib/ff-draft-helpers';
+import { SleeperClient } from '@/app/lib/sleeper/client';
+import { computeWeeklyMatchup } from '@/app/lib/sleeper/weekly-matchup';
 
 export type ActionResult = { success: true } | { success: false; error: string };
 
@@ -10,27 +12,63 @@ export type MyPick = {
   id: string;
   pickedName: string | null;
   leagueName: string | null;
+  wins: number | null;
+  losses: number | null;
+  ties: number | null;
+  avgPointsFor: number | null;
+  avgRatio: number | null;
+  winProbWeek: number | null;
+  opponentNameWeek: string | null;
 };
 
-/** The claimed owner's current picks for this season's draft — used to populate the "drop" choice in the pickup dialog. */
+/**
+ * The claimed owner's current picks for this season's draft, with the same
+ * in-season stats shown on the Sleeper Team Pool page (record, avg points,
+ * relative-points ratio, this week's win probability) — used to populate
+ * the "drop" choice in the pickup dialog, so dropping a team is an informed
+ * decision, not just a name in a dropdown.
+ */
 export async function getMyPicksForPickup(): Promise<MyPick[]> {
   const claimed = await getClaimedOwner();
   if (!claimed) return [];
 
+  const currentWeek = (await new SleeperClient().getNflState()).week;
+
   const result = await sql`
-    SELECT dp.id, dp.picked_name, l.display_name as league_name
+    SELECT
+      dp.id, dp.picked_name, l.display_name as league_name,
+      r.wins, r.losses, r.ties, r.fpts_for,
+      (SELECT AVG(r2.fpts_for) FROM ff_sleeper_rosters r2 WHERE r2.league_key = dp.sleeper_league_key) as league_avg_fpts,
+      pwc.win_prob as win_prob_week,
+      pwc.opponent_name as opponent_name_week
     FROM ff_draft_picks dp
     JOIN ff_drafts d ON d.id = dp.draft_id AND d.season = ${CURRENT_SEASON}
     LEFT JOIN ff_leagues l ON l.sleeper_league_key = dp.sleeper_league_key AND l.platform = 'sleeper'
+    LEFT JOIN ff_sleeper_rosters r ON r.league_key = dp.sleeper_league_key AND r.sleeper_user_id = dp.sleeper_user_id
+    LEFT JOIN ff_pool_team_win_probability_cache pwc ON pwc.league_key = dp.sleeper_league_key AND pwc.sleeper_user_id = dp.sleeper_user_id
+      AND pwc.season = ${CURRENT_SEASON} AND pwc.week = ${currentWeek}
     WHERE dp.drafter_owner_id = ${claimed.id}
     ORDER BY dp.picked_name ASC
   `;
 
-  return result.rows.map((r) => ({
-    id: r.id as string,
-    pickedName: r.picked_name as string | null,
-    leagueName: r.league_name as string | null,
-  }));
+  return result.rows.map((r) => {
+    const gamesPlayed = (r.wins ?? 0) + (r.losses ?? 0) + (r.ties ?? 0);
+    const fptsFor = r.fpts_for != null ? Number(r.fpts_for) : null;
+    const leagueAvgFpts = r.league_avg_fpts != null ? Number(r.league_avg_fpts) : null;
+
+    return {
+      id: r.id as string,
+      pickedName: r.picked_name as string | null,
+      leagueName: r.league_name as string | null,
+      wins: r.wins as number | null,
+      losses: r.losses as number | null,
+      ties: r.ties as number | null,
+      avgPointsFor: gamesPlayed > 0 && fptsFor != null ? fptsFor / gamesPlayed : null,
+      avgRatio: fptsFor != null && leagueAvgFpts != null && leagueAvgFpts > 0 ? fptsFor / leagueAvgFpts : null,
+      winProbWeek: r.win_prob_week != null ? Number(r.win_prob_week) : null,
+      opponentNameWeek: r.opponent_name_week as string | null,
+    };
+  });
 }
 
 /**
@@ -82,6 +120,43 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
       return { success: false, error: 'That team was just picked up by someone else — pick a different one.' };
     }
     throw error;
+  }
+
+  // ff_team_win_probability_cache is keyed by pick_id, not by team — left
+  // alone, it would keep showing the DROPPED team's win%/opponent/proj
+  // (whatever was last computed for this pick_id) until the next scheduled
+  // refresh caught up, silently mislabeled as the new team's. One team, a
+  // rare deliberate action (not a page load), so a live recompute here is
+  // safe — best-effort: a failure here shouldn't undo an otherwise-successful
+  // pickup, the next refresh will still catch it up.
+  try {
+    const client = new SleeperClient();
+    const week = (await client.getNflState()).week;
+    const weekly = await computeWeeklyMatchup(newLeagueKey, newUserId);
+    await sql`
+      INSERT INTO ff_team_win_probability_cache (
+        season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
+        opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
+      )
+      VALUES (
+        ${CURRENT_SEASON}, ${week}, ${dropPickId},
+        ${weekly?.liveWinProb ?? null}, ${weekly?.opponentName ?? null},
+        ${weekly?.liveFor ?? null}, ${weekly?.liveAgainst ?? null}, now(),
+        ${weekly?.winProb ?? null}, ${weekly?.projFor ?? null}, ${weekly?.projAgainst ?? null}, now()
+      )
+      ON CONFLICT (season, week, pick_id) DO UPDATE SET
+        win_prob = EXCLUDED.win_prob,
+        opponent_name = EXCLUDED.opponent_name,
+        proj_for = EXCLUDED.proj_for,
+        proj_against = EXCLUDED.proj_against,
+        computed_at = now(),
+        opening_win_prob = EXCLUDED.opening_win_prob,
+        opening_proj_for = EXCLUDED.opening_proj_for,
+        opening_proj_against = EXCLUDED.opening_proj_against,
+        opening_computed_at = now()
+    `;
+  } catch (error) {
+    console.error('Failed to refresh win probability after pickup (non-fatal):', error);
   }
 
   revalidatePath('/dashboard/my-roster');

@@ -18,7 +18,6 @@ export type OwnerMatchupSide = {
   ownerName: string;
   teams: TeamLine[];
   expectedWins: number; // sum of each team's own win probability — "how many of your teams should win"
-  liveTotal: number | null; // sum of each team's live (actual-so-far + remaining projected) total
 };
 
 export type MatchupDetail = {
@@ -67,28 +66,20 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
   const teams: TeamLine[] = [];
   const winProbs: number[] = [];
   let expectedWins = 0;
-  let liveTotal = 0;
-  let hasLiveTotal = false;
 
   for (const p of picks.rows) {
     const winProb = p.win_prob != null ? Number(p.win_prob) : null;
-    const projFor = p.proj_for != null ? Number(p.proj_for) : null;
 
     if (winProb != null) {
       winProbs.push(winProb);
       expectedWins += winProb;
     }
 
-    if (projFor != null) {
-      liveTotal += projFor;
-      hasLiveTotal = true;
-    }
-
     teams.push({
       pickId: p.pick_id as string,
       pickedName: p.picked_name as string,
       winProb,
-      projFor,
+      projFor: p.proj_for != null ? Number(p.proj_for) : null,
       projAgainst: p.proj_against != null ? Number(p.proj_against) : null,
       openingWinProb: p.opening_win_prob != null ? Number(p.opening_win_prob) : null,
       openingProjFor: p.opening_proj_for != null ? Number(p.opening_proj_for) : null,
@@ -97,7 +88,7 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
   }
 
   return {
-    side: { ownerId, ownerName, teams, expectedWins, liveTotal: hasLiveTotal ? liveTotal : null },
+    side: { ownerId, ownerName, teams, expectedWins },
     winProbs,
   };
 }
