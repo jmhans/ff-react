@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { sql } from '@vercel/postgres';
 import { computeMatchupDetail, OwnerMatchupSide } from '@/app/lib/ff-matchup-detail';
+import MatchupTabs from './MatchupTabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +83,8 @@ export default async function MatchupDetailPage({
           {detail.home.ownerName} vs {detail.away.ownerName}
         </p>
       </div>
+
+      <MatchupTabs matchupId={matchupId} active="matchup" />
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
         <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Win Probability</p>

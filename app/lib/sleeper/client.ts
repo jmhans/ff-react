@@ -42,6 +42,7 @@ export type SleeperMatchup = {
   points: number;
   starters: string[];
   players: string[];
+  players_points: Record<string, number> | null; // per-player points, already scored with this league's own settings
 };
 
 export type SleeperDraft = {
