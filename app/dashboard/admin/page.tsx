@@ -4,6 +4,7 @@ import {
   UsersIcon,
   FunnelIcon,
   CalendarDaysIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 
 const adminSections = [
@@ -24,6 +25,12 @@ const adminSections = [
     description: 'Generate or regenerate the Fantasy Fantasy weekly matchup schedule.',
     href: '/dashboard/admin/schedule',
     icon: CalendarDaysIcon,
+  },
+  {
+    name: 'Data Refresh',
+    description: 'Manually refresh Sleeper rosters, actual stats, or win probability simulations.',
+    href: '/dashboard/admin/data-refresh',
+    icon: ArrowPathIcon,
   },
 ];
 

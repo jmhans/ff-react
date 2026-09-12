@@ -143,3 +143,34 @@ export async function runDailyRefresh() {
   const winProbs = await refreshAllWinProbabilities();
   return { rosters, winProbs };
 }
+
+/**
+ * Records actual per-player stats for a week into ff_player_stat_log —
+ * upserts (not update-only), so this works whether or not a projection
+ * snapshot was already taken for that player this week. Safe to re-run
+ * mid-week — each run just overwrites actual_stats with whatever Sleeper
+ * has posted so far, for players whose games have started.
+ */
+export async function recordWeekActuals(season: number, week: number): Promise<{ updated: number }> {
+  const client = new SleeperClient();
+  const stats = await client.getWeekStats(String(season), week);
+
+  let updated = 0;
+  for (const entry of stats) {
+    const playerId = entry.player_id;
+    if (!playerId || !entry.stats || Object.keys(entry.stats).length === 0) continue;
+    const position = entry.player?.position ?? null;
+
+    await sql`
+      INSERT INTO ff_player_stat_log (season, week, player_id, position, actual_stats, actual_recorded_at)
+      VALUES (${season}, ${week}, ${playerId}, ${position}, ${JSON.stringify(entry.stats)}::jsonb, now())
+      ON CONFLICT (season, week, player_id) DO UPDATE SET
+        actual_stats = EXCLUDED.actual_stats,
+        actual_recorded_at = now(),
+        position = COALESCE(ff_player_stat_log.position, EXCLUDED.position)
+    `;
+    updated += 1;
+  }
+
+  return { updated };
+}
