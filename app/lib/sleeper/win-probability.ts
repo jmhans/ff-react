@@ -71,13 +71,19 @@ export function simulateWinProbability(
  * probability (from simulateWinProbability against its real opponent) is
  * treated as an independent Bernoulli trial; each side's simulated win count
  * is compared per trial. Ties split 50/50.
+ *
+ * Only returns null when NEITHER side has any teams to simulate (nothing to
+ * compare at all). If one side simply hasn't set any starters for the week
+ * yet, that's still a real, calculable matchup — that side just contributes
+ * zero wins in every trial, which correctly skews the result heavily (not
+ * necessarily exactly 0/100) toward whichever side does have starters set.
  */
 export function simulateTeamCountWinProbability(
   homeTeamWinProbs: number[],
   awayTeamWinProbs: number[],
   trials = 5000,
 ): number | null {
-  if (homeTeamWinProbs.length === 0 || awayTeamWinProbs.length === 0) return null;
+  if (homeTeamWinProbs.length === 0 && awayTeamWinProbs.length === 0) return null;
 
   let wins = 0;
   for (let i = 0; i < trials; i++) {
