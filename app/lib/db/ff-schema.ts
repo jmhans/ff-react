@@ -294,6 +294,11 @@ export const ffWeeklyMatchups = pgTable('ff_weekly_matchups', {
   awayWins: integer('away_wins').default(0).notNull(),
   homeTeamWins: integer('home_team_wins'), // how many of home's own real teams won their own real matchup this week — what decides homeWins above
   awayTeamWins: integer('away_team_wins'),
+  // Tiebreaker when home_team_wins === away_team_wins: product of each
+  // starter team's own (points / that team's league's average points this
+  // week) ratio — league-scale-invariant, unlike raw points. Higher wins.
+  homeRatioProduct: numeric('home_ratio_product'),
+  awayRatioProduct: numeric('away_ratio_product'),
   homePoints: numeric('home_points'),
   awayPoints: numeric('away_points'),
   status: varchar('status', { length: 20 }).default('scheduled').notNull(),
