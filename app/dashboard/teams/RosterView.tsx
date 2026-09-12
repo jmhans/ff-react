@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { sql } from '@vercel/postgres';
 import { CURRENT_SEASON } from '@/app/lib/ff-draft-helpers';
 import StarterToggle from '@/app/dashboard/my-roster/StarterToggle';
@@ -159,7 +160,14 @@ export default async function RosterView({
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{pick.picked_name}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <Link
+                        href={`/dashboard/teams/${ownerId}/${pick.id}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {pick.picked_name}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{pick.league_name ?? '-'}</td>
                     <td className="px-4 py-3 text-gray-700">{pick.opponent_name ?? '-'}</td>
                     <td className="px-4 py-3">{pick.proj_for != null ? Number(pick.proj_for).toFixed(1) : '-'}</td>
