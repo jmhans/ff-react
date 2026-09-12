@@ -114,9 +114,10 @@ export class SleeperClient {
    * Single-week per-player ACTUAL stats. Note this is the non-versioned root
    * path, not `/v1/stats/...` — the `/v1` version only returns rank
    * placeholders (pos_rank_*, rank_*), no raw stat categories. This one
-   * returns a full { player, stats: {...} } entry per player.
+   * returns a full { player_id, player, stats: {...} } entry per player —
+   * player_id lives at the top level, NOT nested inside `player`.
    */
-  async getWeekStats(season: string, week: number): Promise<Array<{ player: SleeperPlayer | null; stats: Record<string, number> }>> {
+  async getWeekStats(season: string, week: number): Promise<Array<{ player_id: string | null; player: SleeperPlayer | null; stats: Record<string, number> }>> {
     const response = await this.rootClient.get(`/stats/nfl/${season}/${week}`, {
       params: { season_type: 'regular' },
     });

@@ -1,4 +1,6 @@
 import { sql } from '@vercel/postgres';
+import { CURRENT_SEASON, getClaimedOwner } from '@/app/lib/ff-draft-helpers';
+import { getMyPicksForPickup } from '@/app/lib/ff-pickup-actions';
 import TeamsTable, { TeamTableRow } from './TeamsTable';
 
 type TeamRow = {
@@ -11,6 +13,9 @@ type TeamRow = {
   hist_win_pct: string | null;
   composite_raw_z: string | null;
   overall_rank: string | null;
+  pick_id: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
 };
 
 type HistoryRow = {
@@ -22,9 +27,13 @@ type HistoryRow = {
 export const dynamic = 'force-dynamic';
 
 export default async function TeamsPage() {
+  const [claimed, myPicks] = await Promise.all([getClaimedOwner(), getMyPicksForPickup()]);
+
   // Base off owner history/rankings, not rosters — historical data should show
   // even for leagues that haven't drafted yet (no roster synced = no team_name
   // or projections, but win/loss history is independent of that).
+  // dp/o join current-draft ownership — whoever currently holds this Sleeper
+  // team in Fantasy Fantasy, if anyone (a free agent has no matching dp row).
   const teams = await sql<TeamRow>`
     SELECT
       tr.root_league_key as league_key,
@@ -35,11 +44,17 @@ export default async function TeamsPage() {
       p.projected_points,
       tr.win_pct as hist_win_pct,
       p.composite_raw_z,
-      RANK() OVER (ORDER BY p.composite_raw_z DESC NULLS LAST) as overall_rank
+      RANK() OVER (ORDER BY p.composite_raw_z DESC NULLS LAST) as overall_rank,
+      dp.id as pick_id,
+      o.id as owner_id,
+      COALESCE(o.team_name, o.display_name) as owner_name
     FROM ff_team_rankings tr
     JOIN ff_leagues l ON l.sleeper_league_key = tr.root_league_key AND l.platform = 'sleeper' AND l.include_in_pool = true
     LEFT JOIN ff_sleeper_rosters r ON r.league_key = tr.root_league_key AND r.sleeper_user_id = tr.sleeper_user_id
     LEFT JOIN ff_team_projections p ON p.league_key = tr.root_league_key AND p.sleeper_user_id = tr.sleeper_user_id
+    LEFT JOIN ff_draft_picks dp ON dp.sleeper_league_key = tr.root_league_key AND dp.sleeper_user_id = tr.sleeper_user_id
+      AND dp.draft_id = (SELECT id FROM ff_drafts WHERE season = ${CURRENT_SEASON} LIMIT 1)
+    LEFT JOIN ff_owners o ON o.id = dp.drafter_owner_id
   `;
 
   const history = await sql<HistoryRow>`
@@ -66,6 +81,9 @@ export default async function TeamsPage() {
     histRanksDisplay: team.sleeper_user_id ? historyByKey.get(`${team.league_key}:${team.sleeper_user_id}`) ?? '' : '',
     histWinPct: team.hist_win_pct ? Number(team.hist_win_pct) : null,
     compositeZ: team.composite_raw_z ? Number(team.composite_raw_z) : null,
+    pickId: team.pick_id,
+    ownerName: team.owner_name,
+    isMine: team.owner_id === claimed?.id,
   }));
 
   return (
@@ -77,7 +95,7 @@ export default async function TeamsPage() {
         </p>
       </div>
 
-      <TeamsTable rows={rows} />
+      <TeamsTable rows={rows} canPickup={!!claimed} myPicks={myPicks} />
     </main>
   );
 }

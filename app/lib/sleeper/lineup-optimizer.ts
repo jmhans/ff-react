@@ -28,13 +28,24 @@ export function computeCustomPoints(
   return total;
 }
 
-export type StarterPick = { slot: string; playerId: string; name: string; points: number; position: string | null };
+export type StarterPick = {
+  slot: string;
+  playerId: string;
+  name: string;
+  points: number; // pure pre-game projection — never changes once projections are snapshotted
+  livePoints: number; // actual (if that player's game has started/finished) else same as points
+  isActual: boolean;
+  position: string | null;
+};
 
 /**
  * Greedily fills concrete slots first (QB/RB/WR/TE/K/DEF), then flex-type
  * slots from whoever's left, always taking the highest-projected eligible
  * player. Same algorithm used for both season-long and single-week lineups —
  * just pass in the relevant projection stats for whichever window you want.
+ * Lineup selection is always projection-based (who you'd optimally start
+ * going into the week); actualStatsByPlayerId only affects each starter's
+ * scored points once selected, not who gets selected.
  */
 export function pickOptimalStarters(
   playerIds: string[],
@@ -42,7 +53,8 @@ export function pickOptimalStarters(
   projectionsByPlayerId: Map<string, SleeperProjection>,
   scoringSettings: Record<string, number>,
   rosterPositions: string[],
-): { totalPoints: number; starters: StarterPick[] } {
+  actualStatsByPlayerId?: Map<string, Record<string, number>>,
+): { totalPoints: number; liveTotalPoints: number; starters: StarterPick[] } {
   const startingSlots = rosterPositions.filter((p) => p !== 'BN' && p !== 'IR');
   const concreteSlots = startingSlots.filter((p) => (SLOT_ELIGIBILITY[p]?.length ?? 0) === 1);
   const flexSlots = startingSlots.filter((p) => (SLOT_ELIGIBILITY[p]?.length ?? 0) > 1);
@@ -50,10 +62,14 @@ export function pickOptimalStarters(
   const candidates = playerIds.map((playerId) => {
     const player = players[playerId];
     const projection = projectionsByPlayerId.get(playerId);
+    const actualStats = actualStatsByPlayerId?.get(playerId);
+    const points = computeCustomPoints(projection?.stats, scoringSettings);
     return {
       playerId,
       fantasyPositions: player?.fantasy_positions ?? (player?.position ? [player.position] : []),
-      points: computeCustomPoints(projection?.stats, scoringSettings),
+      points,
+      livePoints: actualStats ? computeCustomPoints(actualStats, scoringSettings) : points,
+      isActual: actualStats != null,
       name: player ? `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim() : playerId,
       position: player?.position ?? null,
     };
@@ -69,7 +85,7 @@ export function pickOptimalStarters(
       .sort((a, b) => b.points - a.points)[0];
     if (best) {
       used.add(best.playerId);
-      starters.push({ slot, playerId: best.playerId, name: best.name, points: best.points, position: best.position });
+      starters.push({ slot, playerId: best.playerId, name: best.name, points: best.points, livePoints: best.livePoints, isActual: best.isActual, position: best.position });
     }
   }
 
@@ -80,9 +96,13 @@ export function pickOptimalStarters(
       .sort((a, b) => b.points - a.points)[0];
     if (best) {
       used.add(best.playerId);
-      starters.push({ slot, playerId: best.playerId, name: best.name, points: best.points, position: best.position });
+      starters.push({ slot, playerId: best.playerId, name: best.name, points: best.points, livePoints: best.livePoints, isActual: best.isActual, position: best.position });
     }
   }
 
-  return { totalPoints: starters.reduce((sum, s) => sum + s.points, 0), starters };
+  return {
+    totalPoints: starters.reduce((sum, s) => sum + s.points, 0),
+    liveTotalPoints: starters.reduce((sum, s) => sum + s.livePoints, 0),
+    starters,
+  };
 }

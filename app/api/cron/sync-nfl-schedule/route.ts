@@ -14,7 +14,7 @@ const BATCH_SIZE = 6;
  * vercel.json). NFL schedules rarely change mid-season, but Thursday flex
  * scheduling and international-game time shifts do happen, so this re-syncs
  * daily rather than being a one-time script. Same auth pattern as
- * app/api/cron/refresh-matchup-projections.
+ * app/api/cron/daily-refresh.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
