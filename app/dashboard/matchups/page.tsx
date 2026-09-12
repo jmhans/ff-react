@@ -86,8 +86,8 @@ export default async function MatchupsPage({
       .map(async (m) => {
         const detail = await computeMatchupDetail(m.home_owner_id, m.away_owner_id as string, selectedWeek);
         liveDetailByMatchupId.set(m.id, {
-          homeLive: detail.home.actualTotal,
-          awayLive: detail.away.actualTotal,
+          homeLive: detail.home.liveTotal,
+          awayLive: detail.away.liveTotal,
           winProbHome: detail.winProbHome,
         });
       }),

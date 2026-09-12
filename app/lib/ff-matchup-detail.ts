@@ -1,6 +1,5 @@
 import { sql } from '@vercel/postgres';
 import { CURRENT_SEASON } from './ff-draft-helpers';
-import { getActualPointsWithOpponent } from './sleeper/actual-points';
 import { simulateTeamCountWinProbability } from './sleeper/win-probability';
 
 export type TeamLine = {
@@ -9,8 +8,6 @@ export type TeamLine = {
   winProb: number | null;
   projFor: number | null;
   projAgainst: number | null;
-  actualPoints: number | null;
-  actualAgainst: number | null;
   openingWinProb: number | null;
   openingProjFor: number | null;
   openingProjAgainst: number | null;
@@ -21,7 +18,7 @@ export type OwnerMatchupSide = {
   ownerName: string;
   teams: TeamLine[];
   expectedWins: number; // sum of each team's own win probability — "how many of your teams should win"
-  actualTotal: number | null; // sum of real points, once posted — the actual scoring mechanic, unrelated to expectedWins
+  liveTotal: number | null; // sum of each team's live (actual-so-far + remaining projected) total
 };
 
 export type MatchupDetail = {
@@ -31,19 +28,26 @@ export type MatchupDetail = {
   winProbHome: number | null;
 };
 
+/**
+ * Pulls everything from ff_team_win_probability_cache — no live Sleeper
+ * calls here. That cache is refreshed by the daily cron
+ * (app/api/cron/daily-refresh) and by the "Refresh Now" button on the
+ * Matchups page, and already carries a live (actual-so-far + remaining
+ * projection) number per team, so there's nothing this function needs to
+ * fetch live itself. This used to also live-fetch each team's real actual
+ * score on every page load (getActualPointsWithOpponent), but with ~7
+ * teams per side across every matchup on the page, that was a lot of
+ * concurrent Sleeper calls on every single page view — real rate-limit
+ * risk for no freshness most viewers needed, given the same numbers are
+ * already sitting in the cache and a manual refresh is one click away.
+ */
 async function getOwnerSide(ownerId: string, week: number): Promise<{ side: OwnerMatchupSide; winProbs: number[] }> {
   const ownerResult = await sql`SELECT team_name, display_name FROM ff_owners WHERE id = ${ownerId}`;
   const ownerRow = ownerResult.rows[0];
   const ownerName = ownerRow ? ((ownerRow.team_name as string | null) ?? (ownerRow.display_name as string)) : 'Unknown';
 
-  // win_prob comes from ff_team_win_probability_cache — refreshed by the
-  // daily cron (app/api/cron/daily-refresh) and by the manual "Refresh Now"
-  // button, not computed live here, since it takes several live Sleeper API
-  // calls per team. Actual points are still fetched live below — that's
-  // cheap and matters more to
-  // stay fresh while games are in progress.
   const picks = await sql`
-    SELECT dp.id as pick_id, dp.picked_name, dp.sleeper_league_key, dp.sleeper_user_id,
+    SELECT dp.id as pick_id, dp.picked_name,
            c.win_prob, c.proj_for, c.proj_against,
            c.opening_win_prob, c.opening_proj_for, c.opening_proj_against
     FROM ff_draft_picks dp
@@ -60,43 +64,32 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
     ORDER BY dp.picked_name ASC
   `;
 
-  const rowsWithActuals = await Promise.all(
-    picks.rows.map(async (p) => {
-      const leagueKey = p.sleeper_league_key as string | null;
-      const sleeperUserId = p.sleeper_user_id as string | null;
-      if (!leagueKey || !sleeperUserId) return { p, actualPoints: null, actualAgainst: null };
-      const actual = await getActualPointsWithOpponent(leagueKey, sleeperUserId, week);
-      return { p, actualPoints: actual?.ourPoints ?? null, actualAgainst: actual?.opponentPoints ?? null };
-    }),
-  );
-
   const teams: TeamLine[] = [];
   const winProbs: number[] = [];
   let expectedWins = 0;
-  let actualTotal = 0;
-  let hasActual = false;
+  let liveTotal = 0;
+  let hasLiveTotal = false;
 
-  for (const { p, actualPoints, actualAgainst } of rowsWithActuals) {
+  for (const p of picks.rows) {
     const winProb = p.win_prob != null ? Number(p.win_prob) : null;
+    const projFor = p.proj_for != null ? Number(p.proj_for) : null;
 
     if (winProb != null) {
       winProbs.push(winProb);
       expectedWins += winProb;
     }
 
-    if (actualPoints !== null) {
-      actualTotal += actualPoints;
-      hasActual = true;
+    if (projFor != null) {
+      liveTotal += projFor;
+      hasLiveTotal = true;
     }
 
     teams.push({
       pickId: p.pick_id as string,
       pickedName: p.picked_name as string,
       winProb,
-      projFor: p.proj_for != null ? Number(p.proj_for) : null,
+      projFor,
       projAgainst: p.proj_against != null ? Number(p.proj_against) : null,
-      actualPoints,
-      actualAgainst,
       openingWinProb: p.opening_win_prob != null ? Number(p.opening_win_prob) : null,
       openingProjFor: p.opening_proj_for != null ? Number(p.opening_proj_for) : null,
       openingProjAgainst: p.opening_proj_against != null ? Number(p.opening_proj_against) : null,
@@ -104,7 +97,7 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
   }
 
   return {
-    side: { ownerId, ownerName, teams, expectedWins, actualTotal: hasActual ? actualTotal : null },
+    side: { ownerId, ownerName, teams, expectedWins, liveTotal: hasLiveTotal ? liveTotal : null },
     winProbs,
   };
 }
@@ -117,10 +110,8 @@ async function getOwnerSide(ownerId: string, week: number): Promise<{ side: Owne
  * a different real league with its own scoring scale. The headline win
  * probability is a Monte Carlo simulation over each side's team-win-count
  * (see simulateTeamCountWinProbability), consistent with that same model.
- * Win probabilities themselves come from a cache table refreshed on a
- * schedule (see getOwnerSide) — this function stays fast even on a cache
- * miss (just shows '-' for that team rather than falling back to a live
- * Sleeper computation), so page loads never wait on it.
+ * Everything here is a plain SQL read (see getOwnerSide) — no live Sleeper
+ * calls, so this is fast and safe to call for every matchup on a page.
  */
 export async function computeMatchupDetail(homeOwnerId: string, awayOwnerId: string, week: number): Promise<MatchupDetail> {
   const [homeResult, awayResult] = await Promise.all([
