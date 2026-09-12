@@ -5,13 +5,13 @@ import MatchupTabs from './MatchupTabs';
 
 export const dynamic = 'force-dynamic';
 
-function SideCard({ side }: { side: OwnerMatchupSide }) {
+function SideCard({ side, isFinal }: { side: OwnerMatchupSide; isFinal: boolean }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
       <div className="border-b border-gray-100 p-4 dark:border-gray-700">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100">{side.ownerName}</h2>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Expected wins {side.expectedWins.toFixed(1)} of {side.teams.length}
+          {isFinal ? 'Final snapshot' : 'Expected wins'} {side.expectedWins.toFixed(1)} of {side.teams.length}
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -20,8 +20,8 @@ function SideCard({ side }: { side: OwnerMatchupSide }) {
             <tr>
               <th className="px-4 py-3">Team</th>
               <th className="px-4 py-3">Win %</th>
-              <th className="px-4 py-3">Live For</th>
-              <th className="px-4 py-3">Live Against</th>
+              <th className="px-4 py-3">{isFinal ? 'Last For' : 'Live For'}</th>
+              <th className="px-4 py-3">{isFinal ? 'Last Against' : 'Live Against'}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -65,14 +65,27 @@ export default async function MatchupDetailPage({
   const { matchupId } = await params;
 
   const matchupResult = await sql`
-    SELECT id, week, home_owner_id, away_owner_id, status
+    SELECT id, week, home_owner_id, away_owner_id, status, winner_owner_id,
+           home_team_wins, away_team_wins, home_ratio_product, away_ratio_product,
+           home_points, away_points
     FROM ff_weekly_matchups
     WHERE id = ${matchupId}
   `;
   const matchup = matchupResult.rows[0];
   if (!matchup || !matchup.away_owner_id) notFound();
 
+  const isFinal = matchup.status === 'final';
   const detail = await computeMatchupDetail(matchup.home_owner_id as string, matchup.away_owner_id as string, matchup.week as number);
+
+  const homeTeamWins = matchup.home_team_wins as number | null;
+  const awayTeamWins = matchup.away_team_wins as number | null;
+  const homeRatio = matchup.home_ratio_product != null ? Number(matchup.home_ratio_product) : null;
+  const awayRatio = matchup.away_ratio_product != null ? Number(matchup.away_ratio_product) : null;
+  const homePoints = matchup.home_points != null ? Number(matchup.home_points) : null;
+  const awayPoints = matchup.away_points != null ? Number(matchup.away_points) : null;
+  const teamWinsTied = homeTeamWins != null && awayTeamWins != null && homeTeamWins === awayTeamWins;
+  const homeWonMatchup = matchup.winner_owner_id === matchup.home_owner_id;
+  const awayWonMatchup = matchup.winner_owner_id === matchup.away_owner_id;
 
   return (
     <main className="space-y-5">
@@ -85,37 +98,61 @@ export default async function MatchupDetailPage({
 
       <MatchupTabs matchupId={matchupId} active="matchup" />
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Win Probability</p>
-        <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
-          {detail.home.ownerName} {detail.winProbHome != null ? `${(detail.winProbHome * 100).toFixed(0)}%` : '-'}
-          {' — '}
-          {detail.away.ownerName} {detail.winProbHome != null ? `${((1 - detail.winProbHome) * 100).toFixed(0)}%` : '-'}
-        </p>
-        {detail.winProbHome != null ? (
-          <div className="mx-auto mt-3 max-w-xs">
-            <div
-              className="flex h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
-              style={{ justifyContent: detail.winProbHome >= 0.5 ? 'flex-start' : 'flex-end' }}
-            >
-              <div
-                className="h-full rounded-full bg-green-500"
-                style={{
-                  width: `${(detail.winProbHome >= 0.5 ? detail.winProbHome * 100 : (1 - detail.winProbHome) * 100).toFixed(1)}%`,
-                }}
-              />
-            </div>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {detail.winProbHome >= 0.5 ? detail.home.ownerName : detail.away.ownerName}{' '}
-              {(detail.winProbHome >= 0.5 ? detail.winProbHome * 100 : (1 - detail.winProbHome) * 100).toFixed(0)}% to win
+      {isFinal ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Final</p>
+          <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
+            <span className={homeWonMatchup ? 'text-emerald-600 dark:text-emerald-400' : ''}>
+              {detail.home.ownerName} {homeTeamWins ?? '-'}
+            </span>
+            {' — '}
+            <span className={awayWonMatchup ? 'text-emerald-600 dark:text-emerald-400' : ''}>
+              {awayTeamWins ?? '-'} {detail.away.ownerName}
+            </span>
+          </p>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {homePoints != null ? homePoints.toFixed(1) : '-'} pts — {awayPoints != null ? awayPoints.toFixed(1) : '-'} pts
+          </p>
+          {teamWinsTied && homeRatio != null && awayRatio != null ? (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Team wins tied — decided by relative-points tiebreaker: {detail.home.ownerName} {homeRatio.toFixed(3)} vs{' '}
+              {detail.away.ownerName} {awayRatio.toFixed(3)}
             </p>
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Win Probability</p>
+          <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {detail.home.ownerName} {detail.winProbHome != null ? `${(detail.winProbHome * 100).toFixed(0)}%` : '-'}
+            {' — '}
+            {detail.away.ownerName} {detail.winProbHome != null ? `${((1 - detail.winProbHome) * 100).toFixed(0)}%` : '-'}
+          </p>
+          {detail.winProbHome != null ? (
+            <div className="mx-auto mt-3 max-w-xs">
+              <div
+                className="flex h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+                style={{ justifyContent: detail.winProbHome >= 0.5 ? 'flex-start' : 'flex-end' }}
+              >
+                <div
+                  className="h-full rounded-full bg-green-500"
+                  style={{
+                    width: `${(detail.winProbHome >= 0.5 ? detail.winProbHome * 100 : (1 - detail.winProbHome) * 100).toFixed(1)}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {detail.winProbHome >= 0.5 ? detail.home.ownerName : detail.away.ownerName}{' '}
+                {(detail.winProbHome >= 0.5 ? detail.winProbHome * 100 : (1 - detail.winProbHome) * 100).toFixed(0)}% to win
+              </p>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <SideCard side={detail.home} />
-        <SideCard side={detail.away} />
+        <SideCard side={detail.home} isFinal={isFinal} />
+        <SideCard side={detail.away} isFinal={isFinal} />
       </div>
     </main>
   );
