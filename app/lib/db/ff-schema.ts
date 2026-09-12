@@ -290,8 +290,10 @@ export const ffWeeklyMatchups = pgTable('ff_weekly_matchups', {
   week: integer('week').notNull(),
   homeOwnerId: uuid('home_owner_id').notNull().references(() => ffOwners.id, { onDelete: 'cascade' }),
   awayOwnerId: uuid('away_owner_id').references(() => ffOwners.id, { onDelete: 'cascade' }),
-  homeWins: integer('home_wins').default(0).notNull(),
+  homeWins: integer('home_wins').default(0).notNull(), // 0/1 — did home win this H2H matchup (Standings sums this into a season W-L record)
   awayWins: integer('away_wins').default(0).notNull(),
+  homeTeamWins: integer('home_team_wins'), // how many of home's own real teams won their own real matchup this week — what decides homeWins above
+  awayTeamWins: integer('away_team_wins'),
   homePoints: numeric('home_points'),
   awayPoints: numeric('away_points'),
   status: varchar('status', { length: 20 }).default('scheduled').notNull(),

@@ -14,6 +14,8 @@ type MatchupRow = {
   status: string;
   home_points: string | null;
   away_points: string | null;
+  home_team_wins: number | null;
+  away_team_wins: number | null;
   winner_owner_id: string | null;
   home_owner_id: string;
   home_team_name: string | null;
@@ -59,7 +61,8 @@ export default async function MatchupsPage({
 
   const matchupsResult = await sql<MatchupRow>`
     SELECT
-      m.id, m.week, m.status, m.home_points, m.away_points, m.winner_owner_id,
+      m.id, m.week, m.status, m.home_points, m.away_points,
+      m.home_team_wins, m.away_team_wins, m.winner_owner_id,
       m.home_owner_id, ho.team_name as home_team_name, ho.display_name as home_display_name,
       m.away_owner_id, ao.team_name as away_team_name, ao.display_name as away_display_name
     FROM ff_weekly_matchups m
@@ -76,18 +79,20 @@ export default async function MatchupsPage({
     return aMine ? -1 : 1;
   });
 
-  // Live totals + win probability for in-progress matchups — finalized ones
-  // already have their real home_points/away_points from finalize-week.ts,
-  // so there's no need to recompute those live.
-  const liveDetailByMatchupId = new Map<string, { homeLive: number | null; awayLive: number | null; winProbHome: number | null }>();
+  // Expected wins + win probability for in-progress matchups — finalized
+  // ones already have their real home_team_wins/away_team_wins from
+  // finalize-week.ts. Expected wins (not summed points) is the right "live"
+  // number here too — points aren't comparable across an owner's teams
+  // since each lives in a different real league with its own scoring scale.
+  const liveDetailByMatchupId = new Map<string, { homeExpectedWins: number | null; awayExpectedWins: number | null; winProbHome: number | null }>();
   await Promise.all(
     matchups
       .filter((m) => m.status !== 'final' && m.away_owner_id)
       .map(async (m) => {
         const detail = await computeMatchupDetail(m.home_owner_id, m.away_owner_id as string, selectedWeek);
         liveDetailByMatchupId.set(m.id, {
-          homeLive: detail.home.liveTotal,
-          awayLive: detail.away.liveTotal,
+          homeExpectedWins: detail.home.expectedWins,
+          awayExpectedWins: detail.away.expectedWins,
           winProbHome: detail.winProbHome,
         });
       }),
@@ -128,8 +133,8 @@ export default async function MatchupsPage({
           const homeName = m.home_team_name ?? m.home_display_name;
           const awayName = m.away_team_name ?? m.away_display_name;
           const live = liveDetailByMatchupId.get(m.id);
-          const homeScore = isFinal ? (m.home_points != null ? Number(m.home_points) : null) : live?.homeLive ?? null;
-          const awayScore = isFinal ? (m.away_points != null ? Number(m.away_points) : null) : live?.awayLive ?? null;
+          const homeScore = isFinal ? m.home_team_wins : live?.homeExpectedWins ?? null;
+          const awayScore = isFinal ? m.away_team_wins : live?.awayExpectedWins ?? null;
           const winProbHome = !isFinal ? live?.winProbHome ?? null : null;
           // Always name/anchor the bar to whichever team is favored — home is
           // on top, so a home favorite fills left-to-right as normal; an away
@@ -148,8 +153,8 @@ export default async function MatchupsPage({
                 ) : null}
                 <p className="font-medium text-gray-900 dark:text-gray-100">{homeName}</p>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Bye week</p>
-                {isFinal && m.home_points != null ? (
-                  <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{Number(m.home_points).toFixed(1)} pts</p>
+                {isFinal && m.home_team_wins != null ? (
+                  <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">{m.home_team_wins} team wins</p>
                 ) : null}
               </div>
             );
@@ -165,11 +170,15 @@ export default async function MatchupsPage({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-gray-900 dark:text-gray-100">{homeName}</p>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">{homeScore != null ? homeScore.toFixed(1) : '-'}</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {homeScore != null ? (isFinal ? homeScore.toFixed(0) : homeScore.toFixed(1)) : '-'}
+                  </p>
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-gray-900 dark:text-gray-100">{awayName}</p>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">{awayScore != null ? awayScore.toFixed(1) : '-'}</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {awayScore != null ? (isFinal ? awayScore.toFixed(0) : awayScore.toFixed(1)) : '-'}
+                  </p>
                 </div>
                 {favoredWinProb != null ? (
                   <div>

@@ -12,7 +12,6 @@ function SideCard({ side }: { side: OwnerMatchupSide }) {
         <h2 className="font-semibold text-gray-900 dark:text-gray-100">{side.ownerName}</h2>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
           Expected wins {side.expectedWins.toFixed(1)} of {side.teams.length}
-          {side.liveTotal != null ? ` — Live ${side.liveTotal.toFixed(1)} pts` : ''}
         </p>
       </div>
       <div className="overflow-x-auto">
