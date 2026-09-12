@@ -1,7 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { processPickup, type MyPick } from '@/app/lib/ff-pickup-actions';
 
 export type TeamTableRow = {
   key: string;
@@ -14,15 +16,19 @@ export type TeamTableRow = {
   histRanksDisplay: string;
   histWinPct: number | null;
   compositeZ: number | null;
+  pickId: string | null; // set once someone's drafted this Sleeper team
+  ownerName: string | null;
+  isMine: boolean;
 };
 
-type SortKey = 'overallRank' | 'teamName' | 'leagueName' | 'projectedPoints' | 'histRanksDisplay' | 'histWinPct' | 'compositeZ';
+type SortKey = 'overallRank' | 'teamName' | 'leagueName' | 'projectedPoints' | 'histRanksDisplay' | 'histWinPct' | 'compositeZ' | 'ownerName';
 type SortDirection = 'asc' | 'desc';
 
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'overallRank', label: 'Overall Rank' },
   { key: 'teamName', label: 'Team Name' },
   { key: 'leagueName', label: 'League' },
+  { key: 'ownerName', label: 'Owner' },
   { key: 'projectedPoints', label: 'Projected Points' },
   { key: 'histRanksDisplay', label: 'Historical Ranks' },
   { key: 'histWinPct', label: 'Hist Win Pct' },
@@ -39,17 +45,106 @@ function compareValues(a: string | number | null, b: string | number | null): nu
   return String(a).localeCompare(String(b));
 }
 
-export default function TeamsTable({ rows }: { rows: TeamTableRow[] }) {
+function PickupDialog({
+  row,
+  myPicks,
+  onClose,
+}: {
+  row: TeamTableRow;
+  myPicks: MyPick[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [dropPickId, setDropPickId] = useState(myPicks[0]?.id ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleConfirm() {
+    if (!dropPickId) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await processPickup(dropPickId, row.leagueKey, row.userId, row.teamName);
+      if (result.success) {
+        router.refresh();
+        onClose();
+      } else {
+        setError(result.error);
+      }
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-lg dark:bg-gray-800">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">Pick Up {row.teamName}</h3>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Choose a team to drop from your roster.</p>
+
+        {myPicks.length === 0 ? (
+          <p className="mt-4 text-sm text-red-600">You don&apos;t have any teams to drop.</p>
+        ) : (
+          <select
+            value={dropPickId}
+            onChange={(e) => setDropPickId(e.target.value)}
+            className="mt-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900"
+          >
+            {myPicks.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.pickedName ?? 'Unnamed team'} {p.leagueName ? `(${p.leagueName})` : ''}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={isPending || myPicks.length === 0}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isPending ? 'Processing…' : 'Confirm Pickup'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function TeamsTable({
+  rows,
+  canPickup,
+  myPicks,
+}: {
+  rows: TeamTableRow[];
+  canPickup: boolean;
+  myPicks: MyPick[];
+}) {
   const [sortKey, setSortKey] = useState<SortKey>('overallRank');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [freeAgentsOnly, setFreeAgentsOnly] = useState(true);
+  const [pickupRow, setPickupRow] = useState<TeamTableRow | null>(null);
+
+  const filteredRows = useMemo(
+    () => (freeAgentsOnly ? rows.filter((r) => !r.ownerName) : rows),
+    [rows, freeAgentsOnly],
+  );
 
   const sortedRows = useMemo(() => {
-    const sorted = [...rows].sort((a, b) => {
+    const sorted = [...filteredRows].sort((a, b) => {
       const cmp = compareValues(a[sortKey], b[sortKey]);
       return sortDirection === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [rows, sortKey, sortDirection]);
+  }, [filteredRows, sortKey, sortDirection]);
 
   function handleSort(key: SortKey) {
     if (key === sortKey) {
@@ -61,65 +156,107 @@ export default function TeamsTable({ rows }: { rows: TeamTableRow[] }) {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-600">
-            <tr>
-              {COLUMNS.map((col) => {
-                const isActive = sortKey === col.key;
-                return (
-                  <th key={col.key} className="px-3 py-3">
-                    <button
-                      type="button"
-                      onClick={() => handleSort(col.key)}
-                      className="flex items-center gap-1 hover:text-gray-900"
-                    >
-                      {col.label}
-                      <span className="text-gray-400">
-                        {isActive ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                      </span>
-                    </button>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sortedRows.map((row) => (
-              <tr key={row.key} className="align-top">
-                <td className="px-3 py-3 font-medium text-gray-900">{row.overallRank ?? '-'}</td>
-                <td className="px-3 py-3">
-                  <Link
-                    href={`/dashboard/sleeper-pool/${row.leagueKey}/${row.userId}`}
-                    className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    {row.teamName}
-                  </Link>
-                </td>
-                <td className="px-3 py-3 text-gray-700">{row.leagueName}</td>
-                <td className="px-3 py-3">
-                  {row.projectedPoints != null ? row.projectedPoints.toFixed(1) : '-'}
-                </td>
-                <td className="px-3 py-3 text-xs text-gray-700">{row.histRanksDisplay || '-'}</td>
-                <td className="px-3 py-3">
-                  {row.histWinPct != null ? row.histWinPct.toFixed(3) : '-'}
-                </td>
-                <td className="px-3 py-3">
-                  {row.compositeZ != null ? row.compositeZ.toFixed(3) : '-'}
-                </td>
-              </tr>
-            ))}
-            {sortedRows.length === 0 ? (
-              <tr>
-                <td className="px-3 py-6 text-center text-gray-500" colSpan={COLUMNS.length}>
-                  No teams found.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setFreeAgentsOnly(true)}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+            freeAgentsOnly ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          Free Agents
+        </button>
+        <button
+          type="button"
+          onClick={() => setFreeAgentsOnly(false)}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+            !freeAgentsOnly ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          All Teams
+        </button>
       </div>
+
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
+            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-600">
+              <tr>
+                {COLUMNS.map((col) => {
+                  const isActive = sortKey === col.key;
+                  return (
+                    <th key={col.key} className="px-3 py-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col.key)}
+                        className="flex items-center gap-1 hover:text-gray-900"
+                      >
+                        {col.label}
+                        <span className="text-gray-400">
+                          {isActive ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
+                        </span>
+                      </button>
+                    </th>
+                  );
+                })}
+                {canPickup ? <th className="px-3 py-3">Action</th> : null}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {sortedRows.map((row) => (
+                <tr key={row.key} className="align-top">
+                  <td className="px-3 py-3 font-medium text-gray-900">{row.overallRank ?? '-'}</td>
+                  <td className="px-3 py-3">
+                    <Link
+                      href={`/dashboard/sleeper-pool/${row.leagueKey}/${row.userId}`}
+                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      {row.teamName}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-3 text-gray-700">{row.leagueName}</td>
+                  <td className="px-3 py-3 text-gray-700">
+                    {row.ownerName ? (row.isMine ? `${row.ownerName} (you)` : row.ownerName) : 'Free Agent'}
+                  </td>
+                  <td className="px-3 py-3">
+                    {row.projectedPoints != null ? row.projectedPoints.toFixed(1) : '-'}
+                  </td>
+                  <td className="px-3 py-3 text-xs text-gray-700">{row.histRanksDisplay || '-'}</td>
+                  <td className="px-3 py-3">
+                    {row.histWinPct != null ? row.histWinPct.toFixed(3) : '-'}
+                  </td>
+                  <td className="px-3 py-3">
+                    {row.compositeZ != null ? row.compositeZ.toFixed(3) : '-'}
+                  </td>
+                  {canPickup ? (
+                    <td className="px-3 py-3">
+                      {!row.ownerName ? (
+                        <button
+                          type="button"
+                          onClick={() => setPickupRow(row)}
+                          className="rounded-md border border-blue-300 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400"
+                        >
+                          Pick Up
+                        </button>
+                      ) : null}
+                    </td>
+                  ) : null}
+                </tr>
+              ))}
+              {sortedRows.length === 0 ? (
+                <tr>
+                  <td className="px-3 py-6 text-center text-gray-500" colSpan={COLUMNS.length + (canPickup ? 1 : 0)}>
+                    No teams found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {pickupRow ? <PickupDialog row={pickupRow} myPicks={myPicks} onClose={() => setPickupRow(null)} /> : null}
     </div>
   );
 }
