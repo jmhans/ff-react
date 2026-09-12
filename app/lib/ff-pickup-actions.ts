@@ -4,6 +4,7 @@ import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import { CURRENT_SEASON, getClaimedOwner } from '@/app/lib/ff-draft-helpers';
 import { SleeperClient } from '@/app/lib/sleeper/client';
+import { computeWeeklyMatchup } from '@/app/lib/sleeper/weekly-matchup';
 
 export type ActionResult = { success: true } | { success: false; error: string };
 
@@ -119,6 +120,43 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
       return { success: false, error: 'That team was just picked up by someone else — pick a different one.' };
     }
     throw error;
+  }
+
+  // ff_team_win_probability_cache is keyed by pick_id, not by team — left
+  // alone, it would keep showing the DROPPED team's win%/opponent/proj
+  // (whatever was last computed for this pick_id) until the next scheduled
+  // refresh caught up, silently mislabeled as the new team's. One team, a
+  // rare deliberate action (not a page load), so a live recompute here is
+  // safe — best-effort: a failure here shouldn't undo an otherwise-successful
+  // pickup, the next refresh will still catch it up.
+  try {
+    const client = new SleeperClient();
+    const week = (await client.getNflState()).week;
+    const weekly = await computeWeeklyMatchup(newLeagueKey, newUserId);
+    await sql`
+      INSERT INTO ff_team_win_probability_cache (
+        season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
+        opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
+      )
+      VALUES (
+        ${CURRENT_SEASON}, ${week}, ${dropPickId},
+        ${weekly?.liveWinProb ?? null}, ${weekly?.opponentName ?? null},
+        ${weekly?.liveFor ?? null}, ${weekly?.liveAgainst ?? null}, now(),
+        ${weekly?.winProb ?? null}, ${weekly?.projFor ?? null}, ${weekly?.projAgainst ?? null}, now()
+      )
+      ON CONFLICT (season, week, pick_id) DO UPDATE SET
+        win_prob = EXCLUDED.win_prob,
+        opponent_name = EXCLUDED.opponent_name,
+        proj_for = EXCLUDED.proj_for,
+        proj_against = EXCLUDED.proj_against,
+        computed_at = now(),
+        opening_win_prob = EXCLUDED.opening_win_prob,
+        opening_proj_for = EXCLUDED.opening_proj_for,
+        opening_proj_against = EXCLUDED.opening_proj_against,
+        opening_computed_at = now()
+    `;
+  } catch (error) {
+    console.error('Failed to refresh win probability after pickup (non-fatal):', error);
   }
 
   revalidatePath('/dashboard/my-roster');
