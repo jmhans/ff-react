@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getClaimedOwner } from '@/app/lib/ff-draft-helpers';
 import { SleeperClient } from '@/app/lib/sleeper/client';
-import { syncAllLeagueRosters, refreshAllWinProbabilities, recordWeekActuals } from '@/app/lib/refresh';
+import { syncAllLeagueRosters, refreshAllWinProbabilities, refreshPoolWinProbabilities, recordWeekActuals } from '@/app/lib/refresh';
 
 export type AdminRefreshResult = { success: true; message: string } | { success: false; error: string };
 
@@ -42,4 +42,13 @@ export async function adminRefreshWinProbabilities(): Promise<AdminRefreshResult
   revalidatePath('/dashboard/my-roster');
   revalidatePath('/dashboard/teams');
   return { success: true, message: `Updated ${result.updated}/${result.total} teams (week ${result.week}), ${result.failed} failed.` };
+}
+
+export async function adminRefreshPoolWinProbabilities(): Promise<AdminRefreshResult> {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
+  const result = await refreshPoolWinProbabilities();
+  revalidatePath('/dashboard/sleeper-pool');
+  return { success: true, message: `Updated ${result.updated}/${result.total} pool teams (week ${result.week}), ${result.failed} failed.` };
 }

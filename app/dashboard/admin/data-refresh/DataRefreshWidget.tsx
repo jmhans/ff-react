@@ -5,10 +5,11 @@ import {
   adminRefreshRosters,
   adminRefreshActuals,
   adminRefreshWinProbabilities,
+  adminRefreshPoolWinProbabilities,
   type AdminRefreshResult,
 } from '@/app/lib/ff-admin-refresh-actions';
 
-type ActionKey = 'rosters' | 'actuals' | 'winProb';
+type ActionKey = 'rosters' | 'actuals' | 'winProb' | 'poolWinProb';
 
 const ACTIONS: { key: ActionKey; title: string; description: string; run: () => Promise<AdminRefreshResult> }[] = [
   {
@@ -29,6 +30,12 @@ const ACTIONS: { key: ActionKey; title: string; description: string; run: () => 
     description: 'Re-run the live actual+remaining-projection simulation for every drafted team.',
     run: adminRefreshWinProbabilities,
   },
+  {
+    key: 'poolWinProb',
+    title: 'Pool Win Probability',
+    description: 'Same simulation, for every team in the pool (not just drafted ones) — powers the Sleeper Team Pool in-season view. Run rosters first if it’s been a while.',
+    run: adminRefreshPoolWinProbabilities,
+  },
 ];
 
 export default function DataRefreshWidget() {
@@ -38,6 +45,7 @@ export default function DataRefreshWidget() {
     rosters: null,
     actuals: null,
     winProb: null,
+    poolWinProb: null,
   });
 
   function handleRun(action: (typeof ACTIONS)[number]) {
@@ -56,7 +64,7 @@ export default function DataRefreshWidget() {
         Manually trigger any of the daily refresh steps — useful mid-week if something looks stale.
       </p>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {ACTIONS.map((action) => {
           const result = results[action.key];
           const isRunning = isPending && runningKey === action.key;

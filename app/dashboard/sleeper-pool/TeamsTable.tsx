@@ -19,12 +19,45 @@ export type TeamTableRow = {
   pickId: string | null; // set once someone's drafted this Sleeper team
   ownerName: string | null;
   isMine: boolean;
+  // In-season
+  wins: number | null;
+  losses: number | null;
+  ties: number | null;
+  avgPointsFor: number | null; // season-to-date points, per game played
+  avgRatio: number | null; // season-to-date points / that league's season-to-date average
+  winProbWeek: number | null; // this week's live win probability
+  opponentNameWeek: string | null;
 };
 
-type SortKey = 'overallRank' | 'teamName' | 'leagueName' | 'projectedPoints' | 'histRanksDisplay' | 'histWinPct' | 'compositeZ' | 'ownerName';
+type View = 'inseason' | 'preseason';
+type SortKey = keyof Pick<
+  TeamTableRow,
+  | 'overallRank'
+  | 'teamName'
+  | 'leagueName'
+  | 'ownerName'
+  | 'projectedPoints'
+  | 'histRanksDisplay'
+  | 'histWinPct'
+  | 'compositeZ'
+  | 'wins'
+  | 'avgPointsFor'
+  | 'avgRatio'
+  | 'winProbWeek'
+>;
 type SortDirection = 'asc' | 'desc';
 
-const COLUMNS: { key: SortKey; label: string }[] = [
+const IN_SEASON_COLUMNS: { key: SortKey; label: string }[] = [
+  { key: 'teamName', label: 'Team Name' },
+  { key: 'leagueName', label: 'League' },
+  { key: 'ownerName', label: 'Owner' },
+  { key: 'wins', label: 'W-L-T' },
+  { key: 'avgPointsFor', label: 'Avg PF' },
+  { key: 'avgRatio', label: 'Avg Ratio' },
+  { key: 'winProbWeek', label: 'Win % (This Week)' },
+];
+
+const PRE_SEASON_COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'overallRank', label: 'Overall Rank' },
   { key: 'teamName', label: 'Team Name' },
   { key: 'leagueName', label: 'League' },
@@ -123,15 +156,26 @@ export default function TeamsTable({
   rows,
   canPickup,
   myPicks,
+  currentWeek,
 }: {
   rows: TeamTableRow[];
   canPickup: boolean;
   myPicks: MyPick[];
+  currentWeek: number;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>('overallRank');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [view, setView] = useState<View>('inseason');
+  const [sortKey, setSortKey] = useState<SortKey>('winProbWeek');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [freeAgentsOnly, setFreeAgentsOnly] = useState(true);
   const [pickupRow, setPickupRow] = useState<TeamTableRow | null>(null);
+
+  const columns = view === 'inseason' ? IN_SEASON_COLUMNS : PRE_SEASON_COLUMNS;
+
+  function setViewMode(next: View) {
+    setView(next);
+    setSortKey(next === 'inseason' ? 'winProbWeek' : 'overallRank');
+    setSortDirection(next === 'inseason' ? 'desc' : 'asc');
+  }
 
   const filteredRows = useMemo(
     () => (freeAgentsOnly ? rows.filter((r) => !r.ownerName) : rows),
@@ -157,25 +201,48 @@ export default function TeamsTable({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setFreeAgentsOnly(true)}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-            freeAgentsOnly ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-          }`}
-        >
-          Free Agents
-        </button>
-        <button
-          type="button"
-          onClick={() => setFreeAgentsOnly(false)}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-            !freeAgentsOnly ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-          }`}
-        >
-          All Teams
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setViewMode('inseason')}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              view === 'inseason' ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            In-Season (Week {currentWeek})
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('preseason')}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              view === 'preseason' ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Pre-Season
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFreeAgentsOnly(true)}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              freeAgentsOnly ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            Free Agents
+          </button>
+          <button
+            type="button"
+            onClick={() => setFreeAgentsOnly(false)}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              !freeAgentsOnly ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            All Teams
+          </button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -183,7 +250,7 @@ export default function TeamsTable({
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-600">
               <tr>
-                {COLUMNS.map((col) => {
+                {columns.map((col) => {
                   const isActive = sortKey === col.key;
                   return (
                     <th key={col.key} className="px-3 py-3">
@@ -206,7 +273,9 @@ export default function TeamsTable({
             <tbody className="divide-y divide-gray-100">
               {sortedRows.map((row) => (
                 <tr key={row.key} className="align-top">
-                  <td className="px-3 py-3 font-medium text-gray-900">{row.overallRank ?? '-'}</td>
+                  {view === 'preseason' ? (
+                    <td className="px-3 py-3 font-medium text-gray-900">{row.overallRank ?? '-'}</td>
+                  ) : null}
                   <td className="px-3 py-3">
                     <Link
                       href={`/dashboard/sleeper-pool/${row.leagueKey}/${row.userId}`}
@@ -219,16 +288,34 @@ export default function TeamsTable({
                   <td className="px-3 py-3 text-gray-700">
                     {row.ownerName ? (row.isMine ? `${row.ownerName} (you)` : row.ownerName) : 'Free Agent'}
                   </td>
-                  <td className="px-3 py-3">
-                    {row.projectedPoints != null ? row.projectedPoints.toFixed(1) : '-'}
-                  </td>
-                  <td className="px-3 py-3 text-xs text-gray-700">{row.histRanksDisplay || '-'}</td>
-                  <td className="px-3 py-3">
-                    {row.histWinPct != null ? row.histWinPct.toFixed(3) : '-'}
-                  </td>
-                  <td className="px-3 py-3">
-                    {row.compositeZ != null ? row.compositeZ.toFixed(3) : '-'}
-                  </td>
+                  {view === 'inseason' ? (
+                    <>
+                      <td className="px-3 py-3 text-gray-700">
+                        {row.wins != null ? `${row.wins}-${row.losses}-${row.ties}` : '-'}
+                      </td>
+                      <td className="px-3 py-3">{row.avgPointsFor != null ? row.avgPointsFor.toFixed(1) : '-'}</td>
+                      <td className="px-3 py-3">{row.avgRatio != null ? row.avgRatio.toFixed(3) : '-'}</td>
+                      <td className="px-3 py-3">
+                        {row.winProbWeek != null ? `${(row.winProbWeek * 100).toFixed(0)}%` : '-'}
+                        {row.opponentNameWeek ? (
+                          <span className="ml-1 text-xs text-gray-400">vs {row.opponentNameWeek}</span>
+                        ) : null}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-3">
+                        {row.projectedPoints != null ? row.projectedPoints.toFixed(1) : '-'}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-gray-700">{row.histRanksDisplay || '-'}</td>
+                      <td className="px-3 py-3">
+                        {row.histWinPct != null ? row.histWinPct.toFixed(3) : '-'}
+                      </td>
+                      <td className="px-3 py-3">
+                        {row.compositeZ != null ? row.compositeZ.toFixed(3) : '-'}
+                      </td>
+                    </>
+                  )}
                   {canPickup ? (
                     <td className="px-3 py-3">
                       {!row.ownerName ? (
@@ -246,7 +333,7 @@ export default function TeamsTable({
               ))}
               {sortedRows.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-6 text-center text-gray-500" colSpan={COLUMNS.length + (canPickup ? 1 : 0)}>
+                  <td className="px-3 py-6 text-center text-gray-500" colSpan={columns.length + (canPickup ? 1 : 0)}>
                     No teams found.
                   </td>
                 </tr>

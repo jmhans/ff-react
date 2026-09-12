@@ -101,9 +101,39 @@ export const ffSleeperRosters = pgTable('ff_sleeper_rosters', {
   displayName: varchar('display_name', { length: 180 }),
   teamName: varchar('team_name', { length: 180 }), // custom team name set in Sleeper, distinct from the owner's display name
   playerIds: jsonb('player_ids').notNull(),
+  // Season-to-date record/scoring, straight from Sleeper's own roster.settings
+  // — powers the Sleeper Team Pool in-season view (W-L-T, avg points, ratio
+  // vs. league average) without any extra live calls beyond this sync.
+  wins: integer('wins'),
+  losses: integer('losses'),
+  ties: integer('ties'),
+  fptsFor: numeric('fpts_for'),
+  fptsAgainst: numeric('fpts_against'),
   syncedAt: timestamp('synced_at', { mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
   uniqueIndex('ff_sleeper_rosters_uidx').on(table.leagueKey, table.rosterId),
+]);
+
+// One row per (season, week, league, sleeper user) — current-week win
+// probability for EVERY team in the pool (not just drafted ones), so the
+// Sleeper Team Pool page can show it for potential pickups too. Refreshed
+// by an admin-triggered action only (see app/lib/ff-admin-refresh-actions.ts),
+// not the automatic daily cron — Vercel's Hobby plan caps cron jobs at 2 and
+// both are already spoken for, and staleness here matters much less than
+// for an owner's own drafted teams.
+export const ffPoolTeamWinProbabilityCache = pgTable('ff_pool_team_win_probability_cache', {
+  id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
+  season: integer('season').notNull(),
+  week: integer('week').notNull(),
+  leagueKey: varchar('league_key', { length: 40 }).notNull(),
+  sleeperUserId: varchar('sleeper_user_id', { length: 40 }).notNull(),
+  winProb: numeric('win_prob'),
+  opponentName: varchar('opponent_name', { length: 180 }),
+  projFor: numeric('proj_for'),
+  projAgainst: numeric('proj_against'),
+  computedAt: timestamp('computed_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('ff_pool_team_win_probability_cache_uidx').on(table.season, table.week, table.leagueKey, table.sleeperUserId),
 ]);
 
 // Composite historical-performance ranking per (root_league_key, sleeper_user_id)
