@@ -108,24 +108,72 @@ function PickupDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-lg dark:bg-gray-800">
+      <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-lg dark:bg-gray-800">
         <h3 className="font-semibold text-gray-900 dark:text-gray-100">Pick Up {row.teamName}</h3>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Choose a team to drop from your roster.</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+          {row.wins != null ? `${row.wins}-${row.losses}-${row.ties} · ` : ''}
+          Avg PF {row.avgPointsFor != null ? row.avgPointsFor.toFixed(1) : '-'} · Avg Ratio{' '}
+          {row.avgRatio != null ? row.avgRatio.toFixed(3) : '-'} · This week{' '}
+          {row.winProbWeek != null ? `${(row.winProbWeek * 100).toFixed(0)}%` : '-'}
+          {row.opponentNameWeek ? ` vs ${row.opponentNameWeek}` : ''}
+        </p>
+
+        <p className="mt-4 text-sm font-medium text-gray-700 dark:text-gray-300">Choose a team to drop:</p>
 
         {myPicks.length === 0 ? (
-          <p className="mt-4 text-sm text-red-600">You don&apos;t have any teams to drop.</p>
+          <p className="mt-2 text-sm text-red-600">You don&apos;t have any teams to drop.</p>
         ) : (
-          <select
-            value={dropPickId}
-            onChange={(e) => setDropPickId(e.target.value)}
-            className="mt-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900"
-          >
-            {myPicks.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.pickedName ?? 'Unnamed team'} {p.leagueName ? `(${p.leagueName})` : ''}
-              </option>
-            ))}
-          </select>
+          <div className="mt-2 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-gray-700">
+                <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-600 dark:bg-gray-900 dark:text-gray-400">
+                  <tr>
+                    <th className="px-3 py-2"></th>
+                    <th className="px-3 py-2">Team</th>
+                    <th className="px-3 py-2">W-L-T</th>
+                    <th className="px-3 py-2">Avg PF</th>
+                    <th className="px-3 py-2">Avg Ratio</th>
+                    <th className="px-3 py-2">This Week</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {myPicks.map((p) => (
+                    <tr
+                      key={p.id}
+                      onClick={() => setDropPickId(p.id)}
+                      className={`cursor-pointer ${dropPickId === p.id ? 'bg-blue-50 dark:bg-blue-950' : ''}`}
+                    >
+                      <td className="px-3 py-2">
+                        <input
+                          type="radio"
+                          name="dropPickId"
+                          checked={dropPickId === p.id}
+                          onChange={() => setDropPickId(p.id)}
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{p.pickedName ?? 'Unnamed team'}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{p.leagueName ?? '-'}</p>
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                        {p.wins != null ? `${p.wins}-${p.losses}-${p.ties}` : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                        {p.avgPointsFor != null ? p.avgPointsFor.toFixed(1) : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                        {p.avgRatio != null ? p.avgRatio.toFixed(3) : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                        {p.winProbWeek != null ? `${(p.winProbWeek * 100).toFixed(0)}%` : '-'}
+                        {p.opponentNameWeek ? <span className="ml-1 text-xs text-gray-400">vs {p.opponentNameWeek}</span> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
 
         {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
