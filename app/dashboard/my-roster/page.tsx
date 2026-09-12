@@ -5,7 +5,6 @@ import { SleeperClient } from '@/app/lib/sleeper/client';
 import ClaimOwnerBanner from '@/app/dashboard/draft/ClaimOwnerBanner';
 import RosterView from '@/app/dashboard/teams/RosterView';
 import PushNotificationToggle from './PushNotificationToggle';
-import RefreshNowButton from './RefreshNowButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,9 +57,8 @@ export default async function MyRosterPage({
         week={week}
         basePath="/dashboard/my-roster"
       />
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-5">
         <PushNotificationToggle />
-        <RefreshNowButton />
       </div>
     </>
   );

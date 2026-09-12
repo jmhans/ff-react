@@ -4,6 +4,7 @@ import { CURRENT_SEASON, getClaimedOwner, pickDefaultWeek } from '@/app/lib/ff-d
 import { SleeperClient } from '@/app/lib/sleeper/client';
 import { computeMatchupDetail } from '@/app/lib/ff-matchup-detail';
 import WeekSelect from './WeekSelect';
+import RefreshNowButton from './RefreshNowButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,7 +100,10 @@ export default async function MatchupsPage({
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Matchups</h1>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{CURRENT_SEASON} Fantasy Fantasy season.</p>
         </div>
-        <WeekSelect weeks={weeks} selected={selectedWeek} />
+        <div className="flex flex-wrap items-center gap-3">
+          {claimed ? <RefreshNowButton /> : null}
+          <WeekSelect weeks={weeks} selected={selectedWeek} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
