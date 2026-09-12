@@ -1,9 +1,7 @@
 import { sql } from '@vercel/postgres';
 import { CURRENT_SEASON } from './ff-draft-helpers';
 import { SleeperClient, SleeperPlayer } from './sleeper/client';
-import { getCachedPlayers } from './sleeper/players-cache';
-
-const POSITION_ORDER: Record<string, number> = { QB: 0, RB: 1, WR: 2, TE: 3, K: 4, DEF: 5 };
+import { getCachedPlayers, getCachedWeekStats } from './sleeper/players-cache';
 
 export type PlayerDetailRow = {
   playerId: string;
@@ -13,6 +11,7 @@ export type PlayerDetailRow = {
   countAgainst: number;
   ptsFor: number;
   ptsAgainst: number;
+  hasPlayed: boolean; // their NFL game has started/finished (has a live stats entry this week)
 };
 
 export type OwnerPlayerDetails = {
@@ -73,6 +72,7 @@ async function computeOwnerPlayerDetails(
   ownerId: string,
   week: number,
   players: Record<string, SleeperPlayer>,
+  weekStats: Record<string, Record<string, number>>,
 ): Promise<OwnerPlayerDetails> {
   const ownerResult = await sql`SELECT team_name, display_name FROM ff_owners WHERE id = ${ownerId}`;
   const ownerRow = ownerResult.rows[0];
@@ -123,15 +123,13 @@ async function computeOwnerPlayerDetails(
       name: player ? `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim() : playerId,
       position: player?.position ?? null,
       ...t,
+      hasPlayed: playerId in weekStats,
     };
   });
 
-  rows.sort((a, b) => {
-    const posA = a.position ? POSITION_ORDER[a.position] ?? 99 : 99;
-    const posB = b.position ? POSITION_ORDER[b.position] ?? 99 : 99;
-    if (posA !== posB) return posA - posB;
-    return b.ptsFor + b.ptsAgainst - (a.ptsFor + a.ptsAgainst);
-  });
+  // Net count for (countFor - countAgainst) descending — how much this
+  // player is working for vs. against this owner overall.
+  rows.sort((a, b) => (b.countFor - b.countAgainst) - (a.countFor - a.countAgainst));
 
   return { ownerId, ownerName, players: rows };
 }
@@ -148,10 +146,10 @@ async function computeOwnerPlayerDetails(
  * one matchup's ~14-16 teams total, not a whole page of matchups.
  */
 export async function computeMatchupPlayerDetails(homeOwnerId: string, awayOwnerId: string, week: number): Promise<MatchupPlayerDetails> {
-  const players = await getCachedPlayers();
+  const [players, weekStats] = await Promise.all([getCachedPlayers(), getCachedWeekStats(String(CURRENT_SEASON), week)]);
   const [home, away] = await Promise.all([
-    computeOwnerPlayerDetails(homeOwnerId, week, players),
-    computeOwnerPlayerDetails(awayOwnerId, week, players),
+    computeOwnerPlayerDetails(homeOwnerId, week, players, weekStats),
+    computeOwnerPlayerDetails(awayOwnerId, week, players, weekStats),
   ]);
   return { week, home, away };
 }
