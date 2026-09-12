@@ -130,7 +130,13 @@ export default async function MatchupsPage({
           const live = liveDetailByMatchupId.get(m.id);
           const homeScore = isFinal ? (m.home_points != null ? Number(m.home_points) : null) : live?.homeLive ?? null;
           const awayScore = isFinal ? (m.away_points != null ? Number(m.away_points) : null) : live?.awayLive ?? null;
-          const awayWinProb = !isFinal && live?.winProbHome != null ? 1 - live.winProbHome : null;
+          const winProbHome = !isFinal ? live?.winProbHome ?? null : null;
+          // Always name/anchor the bar to whichever team is favored — home is
+          // on top, so a home favorite fills left-to-right as normal; an away
+          // favorite (bottom row) fills right-to-left instead.
+          const homeFavored = winProbHome != null ? winProbHome >= 0.5 : null;
+          const favoredName = homeFavored == null ? null : homeFavored ? homeName : awayName;
+          const favoredWinProb = homeFavored == null || winProbHome == null ? null : homeFavored ? winProbHome : 1 - winProbHome;
 
           if (isBye) {
             return (
@@ -165,16 +171,19 @@ export default async function MatchupsPage({
                   <p className="font-medium text-gray-900 dark:text-gray-100">{awayName}</p>
                   <p className="text-sm text-gray-700 dark:text-gray-300">{awayScore != null ? awayScore.toFixed(1) : '-'}</p>
                 </div>
-                {awayWinProb != null ? (
+                {favoredWinProb != null ? (
                   <div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                    <div
+                      className="flex h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+                      style={{ justifyContent: homeFavored ? 'flex-start' : 'flex-end' }}
+                    >
                       <div
-                        className="h-full rounded-full bg-blue-500"
-                        style={{ width: `${(awayWinProb * 100).toFixed(1)}%` }}
+                        className="h-full rounded-full bg-green-500"
+                        style={{ width: `${(favoredWinProb * 100).toFixed(1)}%` }}
                       />
                     </div>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {awayName} {(awayWinProb * 100).toFixed(0)}% to win
+                      {favoredName} {(favoredWinProb * 100).toFixed(0)}% to win
                     </p>
                   </div>
                 ) : (

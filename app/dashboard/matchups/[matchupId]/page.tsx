@@ -92,14 +92,20 @@ export default async function MatchupDetailPage({
         </p>
         {detail.winProbHome != null ? (
           <div className="mx-auto mt-3 max-w-xs">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <div
+              className="flex h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+              style={{ justifyContent: detail.winProbHome >= 0.5 ? 'flex-start' : 'flex-end' }}
+            >
               <div
-                className="h-full rounded-full bg-blue-500"
-                style={{ width: `${((1 - detail.winProbHome) * 100).toFixed(1)}%` }}
+                className="h-full rounded-full bg-green-500"
+                style={{
+                  width: `${(detail.winProbHome >= 0.5 ? detail.winProbHome * 100 : (1 - detail.winProbHome) * 100).toFixed(1)}%`,
+                }}
               />
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {detail.away.ownerName} {((1 - detail.winProbHome) * 100).toFixed(0)}% to win
+              {detail.winProbHome >= 0.5 ? detail.home.ownerName : detail.away.ownerName}{' '}
+              {(detail.winProbHome >= 0.5 ? detail.winProbHome * 100 : (1 - detail.winProbHome) * 100).toFixed(0)}% to win
             </p>
           </div>
         ) : null}
