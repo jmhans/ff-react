@@ -44,21 +44,6 @@ export function pickDefaultWeek(weeks: number[], currentNflWeek: number): number
   return weeks[0];
 }
 
-/**
- * The next week an owner can still edit their lineup for — the earliest
- * week whose roster lock hasn't passed yet. Falls back to the current NFL
- * week if the schedule hasn't been synced (ff_nfl_week_locks empty) —
- * fail-open, same convention as every other cache/lookup miss in this app.
- */
-export async function getNextEditableWeek(currentNflWeek: number): Promise<number> {
-  const result = await sql`
-    SELECT MIN(week) as week FROM ff_nfl_week_locks
-    WHERE season = ${CURRENT_SEASON} AND lock_at > now()
-  `;
-  const week = result.rows[0]?.week;
-  return week != null ? Number(week) : currentNflWeek;
-}
-
 export type ClaimedOwner = {
   id: string;
   displayName: string;
