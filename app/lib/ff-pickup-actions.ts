@@ -96,12 +96,14 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
   }
 
   const pickResult = await sql`
-    SELECT id FROM ff_draft_picks
+    SELECT id, sleeper_league_key, sleeper_user_id FROM ff_draft_picks
     WHERE id = ${dropPickId} AND draft_id = ${draftId} AND drafter_owner_id = ${claimed.id}
   `;
   if (pickResult.rows.length === 0) {
     return { success: false, error: "That pick isn't yours." };
   }
+  const oldLeagueKey = pickResult.rows[0]?.sleeper_league_key as string | null;
+  const oldUserId = pickResult.rows[0]?.sleeper_user_id as string | null;
 
   const takenResult = await sql`
     SELECT id FROM ff_draft_picks
@@ -134,7 +136,10 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
   try {
     const client = new SleeperClient();
     const week = (await client.getNflState()).week;
-    const weekly = await computeWeeklyMatchup(newLeagueKey, newUserId);
+    const [newWeekly, oldWeekly] = await Promise.all([
+      computeWeeklyMatchup(newLeagueKey, newUserId),
+      oldLeagueKey && oldUserId ? computeWeeklyMatchup(oldLeagueKey, oldUserId) : Promise.resolve(null),
+    ]);
     await sql`
       INSERT INTO ff_team_win_probability_cache (
         season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
@@ -142,9 +147,9 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
       )
       VALUES (
         ${CURRENT_SEASON}, ${week}, ${dropPickId},
-        ${weekly?.liveWinProb ?? null}, ${weekly?.opponentName ?? null},
-        ${weekly?.liveFor ?? null}, ${weekly?.liveAgainst ?? null}, now(),
-        ${weekly?.winProb ?? null}, ${weekly?.projFor ?? null}, ${weekly?.projAgainst ?? null}, now()
+        ${newWeekly?.liveWinProb ?? null}, ${newWeekly?.opponentName ?? null},
+        ${newWeekly?.liveFor ?? null}, ${newWeekly?.liveAgainst ?? null}, now(),
+        ${newWeekly?.winProb ?? null}, ${newWeekly?.projFor ?? null}, ${newWeekly?.projAgainst ?? null}, now()
       )
       ON CONFLICT (season, week, pick_id) DO UPDATE SET
         win_prob = EXCLUDED.win_prob,
@@ -163,8 +168,8 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
       )
       VALUES (
         ${CURRENT_SEASON}, ${week}, ${newLeagueKey}, ${newUserId},
-        ${weekly?.liveWinProb ?? null}, ${weekly?.opponentName ?? null},
-        ${weekly?.liveFor ?? null}, ${weekly?.liveAgainst ?? null}, now()
+        ${newWeekly?.liveWinProb ?? null}, ${newWeekly?.opponentName ?? null},
+        ${newWeekly?.liveFor ?? null}, ${newWeekly?.liveAgainst ?? null}, now()
       )
       ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
         win_prob = EXCLUDED.win_prob,
@@ -173,6 +178,24 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
         proj_against = EXCLUDED.proj_against,
         computed_at = now()
     `;
+    if (oldLeagueKey && oldUserId) {
+      await sql`
+        INSERT INTO ff_pool_team_win_probability_cache (
+          season, week, league_key, sleeper_user_id, win_prob, opponent_name, proj_for, proj_against, computed_at
+        )
+        VALUES (
+          ${CURRENT_SEASON}, ${week}, ${oldLeagueKey}, ${oldUserId},
+          ${oldWeekly?.liveWinProb ?? null}, ${oldWeekly?.opponentName ?? null},
+          ${oldWeekly?.liveFor ?? null}, ${oldWeekly?.liveAgainst ?? null}, now()
+        )
+        ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
+          win_prob = EXCLUDED.win_prob,
+          opponent_name = EXCLUDED.opponent_name,
+          proj_for = EXCLUDED.proj_for,
+          proj_against = EXCLUDED.proj_against,
+          computed_at = now()
+      `;
+    }
   } catch (error) {
     console.error('Failed to refresh win probability after pickup (non-fatal):', error);
   }
