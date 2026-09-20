@@ -140,10 +140,12 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
     // This is the same draft-pick row the owner kept; after the UPDATE above it
     // now represents the newly added team, so its drafted-team cache should be
     // refreshed with the new team's matchup data.
-    const [newWeekly, oldWeekly] = await Promise.all([
+    const [newWeeklyResult, oldWeeklyResult] = await Promise.allSettled([
       computeWeeklyMatchup(newLeagueKey, newUserId),
       oldLeagueKey && oldUserId ? computeWeeklyMatchup(oldLeagueKey, oldUserId) : Promise.resolve(null),
     ]);
+    const newWeekly = newWeeklyResult.status === 'fulfilled' ? newWeeklyResult.value : null;
+    const oldWeekly = oldWeeklyResult.status === 'fulfilled' ? oldWeeklyResult.value : null;
     if (newWeekly) {
       await sql`
         INSERT INTO ff_team_win_probability_cache (
