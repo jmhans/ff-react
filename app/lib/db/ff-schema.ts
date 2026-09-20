@@ -116,11 +116,9 @@ export const ffSleeperRosters = pgTable('ff_sleeper_rosters', {
 
 // One row per (season, week, league, sleeper user) — current-week win
 // probability for EVERY team in the pool (not just drafted ones), so the
-// Sleeper Team Pool page can show it for potential pickups too. Refreshed
-// by an admin-triggered action only (see app/lib/ff-admin-refresh-actions.ts),
-// not the automatic daily cron — Vercel's Hobby plan caps cron jobs at 2 and
-// both are already spoken for, and staleness here matters much less than
-// for an owner's own drafted teams.
+// Sleeper Team Pool page can show it for potential pickups too. Refreshed by
+// the daily/manual refresh path, and also opportunistically updated for the
+// specific team involved in a pickup so pool and roster views stay aligned.
 export const ffPoolTeamWinProbabilityCache = pgTable('ff_pool_team_win_probability_cache', {
   id: uuid('id').default(sql`gen_random_uuid()`).primaryKey().notNull(),
   season: integer('season').notNull(),

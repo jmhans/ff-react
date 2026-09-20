@@ -67,8 +67,8 @@ export default async function TeamsPage() {
       COALESCE(o.team_name, o.display_name) as owner_name,
       r.wins, r.losses, r.ties, r.fpts_for,
       AVG(r.fpts_for) OVER (PARTITION BY r.league_key) as league_avg_fpts,
-      pwc.win_prob as win_prob_week,
-      pwc.opponent_name as opponent_name_week
+      COALESCE(twc.win_prob, pwc.win_prob) as win_prob_week,
+      COALESCE(twc.opponent_name, pwc.opponent_name) as opponent_name_week
     FROM ff_team_rankings tr
     JOIN ff_leagues l ON l.sleeper_league_key = tr.root_league_key AND l.platform = 'sleeper' AND l.include_in_pool = true
     LEFT JOIN ff_sleeper_rosters r ON r.league_key = tr.root_league_key AND r.sleeper_user_id = tr.sleeper_user_id
@@ -76,6 +76,8 @@ export default async function TeamsPage() {
     LEFT JOIN ff_draft_picks dp ON dp.sleeper_league_key = tr.root_league_key AND dp.sleeper_user_id = tr.sleeper_user_id
       AND dp.draft_id = (SELECT id FROM ff_drafts WHERE season = ${CURRENT_SEASON} LIMIT 1)
     LEFT JOIN ff_owners o ON o.id = dp.drafter_owner_id
+    LEFT JOIN ff_team_win_probability_cache twc ON twc.pick_id = dp.id
+      AND twc.season = ${CURRENT_SEASON} AND twc.week = ${currentWeek}
     LEFT JOIN ff_pool_team_win_probability_cache pwc ON pwc.league_key = tr.root_league_key AND pwc.sleeper_user_id = tr.sleeper_user_id
       AND pwc.season = ${CURRENT_SEASON} AND pwc.week = ${currentWeek}
   `;

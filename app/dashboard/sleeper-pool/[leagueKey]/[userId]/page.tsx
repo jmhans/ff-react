@@ -1,28 +1,10 @@
 import { notFound } from 'next/navigation';
 import { sql } from '@vercel/postgres';
+import { CURRENT_SEASON } from '@/app/lib/ff-draft-helpers';
 import { SleeperClient } from '@/app/lib/sleeper/client';
 import { getCachedPlayers } from '@/app/lib/sleeper/players-cache';
 
 export const dynamic = 'force-dynamic';
-
-function erf(x: number): number {
-  const a1 = 0.254829592;
-  const a2 = -0.284496736;
-  const a3 = 1.421413741;
-  const a4 = -1.453152027;
-  const a5 = 1.061405429;
-  const p = 0.3275911;
-  const sign = x < 0 ? -1 : 1;
-  const absX = Math.abs(x);
-  const t = 1.0 / (1.0 + p * absX);
-  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-absX * absX);
-  return sign * y;
-}
-
-function normDist(x: number, mean: number, stdev: number): number {
-  if (stdev === 0) return x >= mean ? 1 : 0;
-  return 0.5 * (1 + erf((x - mean) / (stdev * Math.SQRT2)));
-}
 
 export default async function TeamHomePage({
   params,
@@ -115,21 +97,29 @@ export default async function TeamHomePage({
       const opponentUser = opponentRoster?.owner_id ? users.find((u) => u.user_id === opponentRoster.owner_id) : null;
 
       if (opponentUser && opponentRoster) {
-        // Win probability from stored season-strength z-scores: treat each
-        // team's score as approximately normal with the league's typical
-        // variance, so the difference has ~sqrt(2)x that variance.
-        const zRows = await sql`
-          SELECT sleeper_user_id, points_raw_z
-          FROM ff_team_projections
-          WHERE league_key = ${leagueKey} AND sleeper_user_id IN (${userId}, ${opponentUser.user_id})
+        // Same win-probability source as everywhere else on the site (the
+        // Sleeper Team Pool table, My Roster): the cached result of
+        // computeWeeklyMatchup's Monte Carlo lineup simulation, refreshed by
+        // app/lib/refresh.ts. Reading it here instead of recomputing our own
+        // estimate keeps this page's number consistent with the rest of the
+        // site instead of drifting from it.
+        const cacheRows = await sql`
+          SELECT COALESCE(twc.win_prob, pwc.win_prob) as win_prob
+          FROM (SELECT 1 as x) placeholder
+          LEFT JOIN ff_draft_picks dp
+            ON dp.sleeper_league_key = ${leagueKey} AND dp.sleeper_user_id = ${userId}
+            AND dp.draft_id = (SELECT id FROM ff_drafts WHERE season = ${CURRENT_SEASON} LIMIT 1)
+          LEFT JOIN ff_team_win_probability_cache twc
+            ON twc.pick_id = dp.id AND twc.season = ${CURRENT_SEASON} AND twc.week = ${state.week}
+          LEFT JOIN ff_pool_team_win_probability_cache pwc
+            ON pwc.league_key = ${leagueKey} AND pwc.sleeper_user_id = ${userId}
+            AND pwc.season = ${CURRENT_SEASON} AND pwc.week = ${state.week}
         `;
-        const zByUser = new Map(zRows.rows.map((r) => [r.sleeper_user_id as string, Number(r.points_raw_z)]));
-        const myZ = zByUser.get(userId);
-        const oppZ = zByUser.get(opponentUser.user_id);
+        const winProb = cacheRows.rows[0]?.win_prob;
 
         opponent = {
           teamName: opponentUser.metadata?.team_name || opponentUser.display_name,
-          winProbability: myZ != null && oppZ != null ? normDist((myZ - oppZ) / Math.SQRT2, 0, 1) : null,
+          winProbability: winProb != null ? Number(winProb) : null,
         };
       }
     }

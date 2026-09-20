@@ -39,12 +39,14 @@ export async function getMyPicksForPickup(): Promise<MyPick[]> {
       dp.id, dp.picked_name, l.display_name as league_name,
       r.wins, r.losses, r.ties, r.fpts_for,
       (SELECT AVG(r2.fpts_for) FROM ff_sleeper_rosters r2 WHERE r2.league_key = dp.sleeper_league_key) as league_avg_fpts,
-      pwc.win_prob as win_prob_week,
-      pwc.opponent_name as opponent_name_week
+      COALESCE(twc.win_prob, pwc.win_prob) as win_prob_week,
+      COALESCE(twc.opponent_name, pwc.opponent_name) as opponent_name_week
     FROM ff_draft_picks dp
     JOIN ff_drafts d ON d.id = dp.draft_id AND d.season = ${CURRENT_SEASON}
     LEFT JOIN ff_leagues l ON l.sleeper_league_key = dp.sleeper_league_key AND l.platform = 'sleeper'
     LEFT JOIN ff_sleeper_rosters r ON r.league_key = dp.sleeper_league_key AND r.sleeper_user_id = dp.sleeper_user_id
+    LEFT JOIN ff_team_win_probability_cache twc ON twc.pick_id = dp.id
+      AND twc.season = ${CURRENT_SEASON} AND twc.week = ${currentWeek}
     LEFT JOIN ff_pool_team_win_probability_cache pwc ON pwc.league_key = dp.sleeper_league_key AND pwc.sleeper_user_id = dp.sleeper_user_id
       AND pwc.season = ${CURRENT_SEASON} AND pwc.week = ${currentWeek}
     WHERE dp.drafter_owner_id = ${claimed.id}
@@ -94,12 +96,15 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
   }
 
   const pickResult = await sql`
-    SELECT id FROM ff_draft_picks
+    SELECT id, sleeper_league_key, sleeper_user_id FROM ff_draft_picks
     WHERE id = ${dropPickId} AND draft_id = ${draftId} AND drafter_owner_id = ${claimed.id}
   `;
   if (pickResult.rows.length === 0) {
     return { success: false, error: "That pick isn't yours." };
   }
+  const rosterPickId = pickResult.rows[0]?.id as string;
+  const oldLeagueKey = pickResult.rows[0]?.sleeper_league_key as string | null;
+  const oldUserId = pickResult.rows[0]?.sleeper_user_id as string | null;
 
   const takenResult = await sql`
     SELECT id FROM ff_draft_picks
@@ -113,7 +118,7 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
     await sql`
       UPDATE ff_draft_picks
       SET sleeper_league_key = ${newLeagueKey}, sleeper_user_id = ${newUserId}, picked_name = ${newTeamName}, picked_at = now()
-      WHERE id = ${dropPickId}
+      WHERE id = ${rosterPickId}
     `;
   } catch (error: any) {
     if (error?.code === '23505') {
@@ -132,29 +137,80 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
   try {
     const client = new SleeperClient();
     const week = (await client.getNflState()).week;
-    const weekly = await computeWeeklyMatchup(newLeagueKey, newUserId);
-    await sql`
-      INSERT INTO ff_team_win_probability_cache (
-        season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
-        opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
-      )
-      VALUES (
-        ${CURRENT_SEASON}, ${week}, ${dropPickId},
-        ${weekly?.liveWinProb ?? null}, ${weekly?.opponentName ?? null},
-        ${weekly?.liveFor ?? null}, ${weekly?.liveAgainst ?? null}, now(),
-        ${weekly?.winProb ?? null}, ${weekly?.projFor ?? null}, ${weekly?.projAgainst ?? null}, now()
-      )
-      ON CONFLICT (season, week, pick_id) DO UPDATE SET
-        win_prob = EXCLUDED.win_prob,
-        opponent_name = EXCLUDED.opponent_name,
-        proj_for = EXCLUDED.proj_for,
-        proj_against = EXCLUDED.proj_against,
-        computed_at = now(),
-        opening_win_prob = EXCLUDED.opening_win_prob,
-        opening_proj_for = EXCLUDED.opening_proj_for,
-        opening_proj_against = EXCLUDED.opening_proj_against,
-        opening_computed_at = now()
-    `;
+    // This is the same draft-pick row the owner kept; after the UPDATE above it
+    // now represents the newly added team, so its drafted-team cache should be
+    // refreshed with the new team's matchup data.
+    const [newWeeklyResult, oldWeeklyResult] = await Promise.allSettled([
+      computeWeeklyMatchup(newLeagueKey, newUserId),
+      oldLeagueKey && oldUserId ? computeWeeklyMatchup(oldLeagueKey, oldUserId) : Promise.resolve(null),
+    ]);
+    const newWeekly = newWeeklyResult.status === 'fulfilled' ? newWeeklyResult.value : null;
+    const oldWeekly = oldWeeklyResult.status === 'fulfilled' ? oldWeeklyResult.value : null;
+    if (newWeekly) {
+      await sql`
+        INSERT INTO ff_team_win_probability_cache (
+          season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
+          opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
+        )
+        VALUES (
+          ${CURRENT_SEASON}, ${week}, ${rosterPickId},
+          ${newWeekly.liveWinProb ?? null}, ${newWeekly.opponentName ?? null},
+          ${newWeekly.liveFor ?? null}, ${newWeekly.liveAgainst ?? null}, now(),
+          ${newWeekly.winProb ?? null}, ${newWeekly.projFor ?? null}, ${newWeekly.projAgainst ?? null}, now()
+        )
+        ON CONFLICT (season, week, pick_id) DO UPDATE SET
+          win_prob = EXCLUDED.win_prob,
+          opponent_name = EXCLUDED.opponent_name,
+          proj_for = EXCLUDED.proj_for,
+          proj_against = EXCLUDED.proj_against,
+          computed_at = now(),
+          opening_win_prob = EXCLUDED.opening_win_prob,
+          opening_proj_for = EXCLUDED.opening_proj_for,
+          opening_proj_against = EXCLUDED.opening_proj_against,
+          opening_computed_at = now()
+      `;
+    } else {
+      await sql`
+        DELETE FROM ff_team_win_probability_cache
+        WHERE season = ${CURRENT_SEASON} AND week = ${week} AND pick_id = ${rosterPickId}
+      `;
+    }
+    if (newWeekly) {
+      await sql`
+        INSERT INTO ff_pool_team_win_probability_cache (
+          season, week, league_key, sleeper_user_id, win_prob, opponent_name, proj_for, proj_against, computed_at
+        )
+        VALUES (
+          ${CURRENT_SEASON}, ${week}, ${newLeagueKey}, ${newUserId},
+          ${newWeekly.liveWinProb ?? null}, ${newWeekly.opponentName ?? null},
+          ${newWeekly.liveFor ?? null}, ${newWeekly.liveAgainst ?? null}, now()
+        )
+        ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
+          win_prob = EXCLUDED.win_prob,
+          opponent_name = EXCLUDED.opponent_name,
+          proj_for = EXCLUDED.proj_for,
+          proj_against = EXCLUDED.proj_against,
+          computed_at = now()
+      `;
+    }
+    if (oldLeagueKey && oldUserId && oldWeekly) {
+      await sql`
+        INSERT INTO ff_pool_team_win_probability_cache (
+          season, week, league_key, sleeper_user_id, win_prob, opponent_name, proj_for, proj_against, computed_at
+        )
+        VALUES (
+          ${CURRENT_SEASON}, ${week}, ${oldLeagueKey}, ${oldUserId},
+          ${oldWeekly.liveWinProb ?? null}, ${oldWeekly.opponentName ?? null},
+          ${oldWeekly.liveFor ?? null}, ${oldWeekly.liveAgainst ?? null}, now()
+        )
+        ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
+          win_prob = EXCLUDED.win_prob,
+          opponent_name = EXCLUDED.opponent_name,
+          proj_for = EXCLUDED.proj_for,
+          proj_against = EXCLUDED.proj_against,
+          computed_at = now()
+      `;
+    }
   } catch (error) {
     console.error('Failed to refresh win probability after pickup (non-fatal):', error);
   }
