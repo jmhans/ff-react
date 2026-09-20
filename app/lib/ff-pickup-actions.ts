@@ -102,6 +102,7 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
   if (pickResult.rows.length === 0) {
     return { success: false, error: "That pick isn't yours." };
   }
+  const rosterPickId = pickResult.rows[0]?.id as string;
   const oldLeagueKey = pickResult.rows[0]?.sleeper_league_key as string | null;
   const oldUserId = pickResult.rows[0]?.sleeper_user_id as string | null;
 
@@ -117,7 +118,7 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
     await sql`
       UPDATE ff_draft_picks
       SET sleeper_league_key = ${newLeagueKey}, sleeper_user_id = ${newUserId}, picked_name = ${newTeamName}, picked_at = now()
-      WHERE id = ${dropPickId}
+      WHERE id = ${rosterPickId}
     `;
   } catch (error: any) {
     if (error?.code === '23505') {
@@ -136,6 +137,9 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
   try {
     const client = new SleeperClient();
     const week = (await client.getNflState()).week;
+    // This is the same draft-pick row the owner kept; after the UPDATE above it
+    // now represents the newly added team, so its drafted-team cache should be
+    // refreshed with the new team's matchup data.
     const [newWeekly, oldWeekly] = await Promise.all([
       computeWeeklyMatchup(newLeagueKey, newUserId),
       oldLeagueKey && oldUserId ? computeWeeklyMatchup(oldLeagueKey, oldUserId) : Promise.resolve(null),
@@ -146,7 +150,7 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
         opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
       )
       VALUES (
-        ${CURRENT_SEASON}, ${week}, ${dropPickId},
+        ${CURRENT_SEASON}, ${week}, ${rosterPickId},
         ${newWeekly?.liveWinProb ?? null}, ${newWeekly?.opponentName ?? null},
         ${newWeekly?.liveFor ?? null}, ${newWeekly?.liveAgainst ?? null}, now(),
         ${newWeekly?.winProb ?? null}, ${newWeekly?.projFor ?? null}, ${newWeekly?.projAgainst ?? null}, now()
