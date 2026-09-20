@@ -12,9 +12,9 @@ export type RefreshNowResult =
   | { success: false; error: string; retryAfterMs?: number };
 
 /**
- * Manual intraday refresh (rosters + win probabilities), open to any
+ * Manual intraday refresh (rosters + drafted/pool win probabilities), open to any
  * logged-in owner. App-wide cooldown, not per-owner — this makes live
- * Sleeper API calls across ~100 teams, so it needs to stay rare regardless
+ * Sleeper API calls across the whole tracked pool, so it needs to stay rare regardless
  * of how many different owners click it. Gated off ff_team_win_probability_cache's
  * own computed_at rather than a separate tracking table, since that's
  * already exactly "when did a refresh last actually finish."
@@ -42,6 +42,7 @@ export async function refreshNow(): Promise<RefreshNowResult> {
 
   revalidatePath('/dashboard/my-roster');
   revalidatePath('/dashboard/matchups');
+  revalidatePath('/dashboard/sleeper-pool');
   revalidatePath('/dashboard/teams');
   return { success: true };
 }

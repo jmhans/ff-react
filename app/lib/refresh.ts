@@ -152,11 +152,12 @@ export async function refreshAllWinProbabilities(): Promise<{ week: number; upda
   return { week, updated, failed, total: picks.rows.length };
 }
 
-/** Roster sync + win-prob refresh, run together daily via cron and on-demand via the manual refresh button. */
+/** Roster sync + drafted/pool win-prob refresh, run together daily via cron and on-demand via the manual refresh button. */
 export async function runDailyRefresh() {
   const rosters = await syncAllLeagueRosters();
   const winProbs = await refreshAllWinProbabilities();
-  return { rosters, winProbs };
+  const poolWinProbs = await refreshPoolWinProbabilities();
+  return { rosters, winProbs, poolWinProbs };
 }
 
 /**
