@@ -144,28 +144,35 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
       computeWeeklyMatchup(newLeagueKey, newUserId),
       oldLeagueKey && oldUserId ? computeWeeklyMatchup(oldLeagueKey, oldUserId) : Promise.resolve(null),
     ]);
-    await sql`
-      INSERT INTO ff_team_win_probability_cache (
-        season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
-        opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
-      )
-      VALUES (
-        ${CURRENT_SEASON}, ${week}, ${rosterPickId},
-        ${newWeekly?.liveWinProb ?? null}, ${newWeekly?.opponentName ?? null},
-        ${newWeekly?.liveFor ?? null}, ${newWeekly?.liveAgainst ?? null}, now(),
-        ${newWeekly?.winProb ?? null}, ${newWeekly?.projFor ?? null}, ${newWeekly?.projAgainst ?? null}, now()
-      )
-      ON CONFLICT (season, week, pick_id) DO UPDATE SET
-        win_prob = EXCLUDED.win_prob,
-        opponent_name = EXCLUDED.opponent_name,
-        proj_for = EXCLUDED.proj_for,
-        proj_against = EXCLUDED.proj_against,
-        computed_at = now(),
-        opening_win_prob = EXCLUDED.opening_win_prob,
-        opening_proj_for = EXCLUDED.opening_proj_for,
-        opening_proj_against = EXCLUDED.opening_proj_against,
-        opening_computed_at = now()
-    `;
+    if (newWeekly) {
+      await sql`
+        INSERT INTO ff_team_win_probability_cache (
+          season, week, pick_id, win_prob, opponent_name, proj_for, proj_against, computed_at,
+          opening_win_prob, opening_proj_for, opening_proj_against, opening_computed_at
+        )
+        VALUES (
+          ${CURRENT_SEASON}, ${week}, ${rosterPickId},
+          ${newWeekly.liveWinProb ?? null}, ${newWeekly.opponentName ?? null},
+          ${newWeekly.liveFor ?? null}, ${newWeekly.liveAgainst ?? null}, now(),
+          ${newWeekly.winProb ?? null}, ${newWeekly.projFor ?? null}, ${newWeekly.projAgainst ?? null}, now()
+        )
+        ON CONFLICT (season, week, pick_id) DO UPDATE SET
+          win_prob = EXCLUDED.win_prob,
+          opponent_name = EXCLUDED.opponent_name,
+          proj_for = EXCLUDED.proj_for,
+          proj_against = EXCLUDED.proj_against,
+          computed_at = now(),
+          opening_win_prob = EXCLUDED.opening_win_prob,
+          opening_proj_for = EXCLUDED.opening_proj_for,
+          opening_proj_against = EXCLUDED.opening_proj_against,
+          opening_computed_at = now()
+      `;
+    } else {
+      await sql`
+        DELETE FROM ff_team_win_probability_cache
+        WHERE season = ${CURRENT_SEASON} AND week = ${week} AND pick_id = ${rosterPickId}
+      `;
+    }
     if (newWeekly) {
       await sql`
         INSERT INTO ff_pool_team_win_probability_cache (
