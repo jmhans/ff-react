@@ -1,6 +1,6 @@
 import { auth0 } from '@/app/lib/auth0';
 import { LoginButton } from '@/app/ui/auth/buttons';
-import { CURRENT_SEASON, getClaimedOwner } from '@/app/lib/ff-draft-helpers';
+import { CURRENT_SEASON, getClaimedOwner, getNextEditableWeek } from '@/app/lib/ff-draft-helpers';
 import { SleeperClient } from '@/app/lib/sleeper/client';
 import ClaimOwnerBanner from '@/app/dashboard/draft/ClaimOwnerBanner';
 import RosterView from '@/app/dashboard/teams/RosterView';
@@ -44,7 +44,7 @@ export default async function MyRosterPage({
   if (!week) {
     const client = new SleeperClient();
     const state = await client.getNflState();
-    week = state.week;
+    week = await getNextEditableWeek(state.week);
   }
 
   return (
