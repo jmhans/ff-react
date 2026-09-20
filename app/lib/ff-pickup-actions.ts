@@ -166,31 +166,33 @@ export async function processPickup(dropPickId: string, newLeagueKey: string, ne
         opening_proj_against = EXCLUDED.opening_proj_against,
         opening_computed_at = now()
     `;
-    await sql`
-      INSERT INTO ff_pool_team_win_probability_cache (
-        season, week, league_key, sleeper_user_id, win_prob, opponent_name, proj_for, proj_against, computed_at
-      )
-      VALUES (
-        ${CURRENT_SEASON}, ${week}, ${newLeagueKey}, ${newUserId},
-        ${newWeekly?.liveWinProb ?? null}, ${newWeekly?.opponentName ?? null},
-        ${newWeekly?.liveFor ?? null}, ${newWeekly?.liveAgainst ?? null}, now()
-      )
-      ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
-        win_prob = EXCLUDED.win_prob,
-        opponent_name = EXCLUDED.opponent_name,
-        proj_for = EXCLUDED.proj_for,
-        proj_against = EXCLUDED.proj_against,
-        computed_at = now()
-    `;
-    if (oldLeagueKey && oldUserId) {
+    if (newWeekly) {
+      await sql`
+        INSERT INTO ff_pool_team_win_probability_cache (
+          season, week, league_key, sleeper_user_id, win_prob, opponent_name, proj_for, proj_against, computed_at
+        )
+        VALUES (
+          ${CURRENT_SEASON}, ${week}, ${newLeagueKey}, ${newUserId},
+          ${newWeekly.liveWinProb ?? null}, ${newWeekly.opponentName ?? null},
+          ${newWeekly.liveFor ?? null}, ${newWeekly.liveAgainst ?? null}, now()
+        )
+        ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
+          win_prob = EXCLUDED.win_prob,
+          opponent_name = EXCLUDED.opponent_name,
+          proj_for = EXCLUDED.proj_for,
+          proj_against = EXCLUDED.proj_against,
+          computed_at = now()
+      `;
+    }
+    if (oldLeagueKey && oldUserId && oldWeekly) {
       await sql`
         INSERT INTO ff_pool_team_win_probability_cache (
           season, week, league_key, sleeper_user_id, win_prob, opponent_name, proj_for, proj_against, computed_at
         )
         VALUES (
           ${CURRENT_SEASON}, ${week}, ${oldLeagueKey}, ${oldUserId},
-          ${oldWeekly?.liveWinProb ?? null}, ${oldWeekly?.opponentName ?? null},
-          ${oldWeekly?.liveFor ?? null}, ${oldWeekly?.liveAgainst ?? null}, now()
+          ${oldWeekly.liveWinProb ?? null}, ${oldWeekly.opponentName ?? null},
+          ${oldWeekly.liveFor ?? null}, ${oldWeekly.liveAgainst ?? null}, now()
         )
         ON CONFLICT (season, week, league_key, sleeper_user_id) DO UPDATE SET
           win_prob = EXCLUDED.win_prob,
