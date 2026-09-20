@@ -33,6 +33,12 @@ export async function adminRefreshActuals(): Promise<AdminRefreshResult> {
   return { success: true, message: `Recorded actual stats for ${result.updated} players (week ${state.week}).` };
 }
 
+// refreshAllWinProbabilities now computes every pool team's win probability
+// ONCE and writes that single result to both ff_team_win_probability_cache
+// and ff_pool_team_win_probability_cache, so these two actions (kept as
+// separate buttons for their different revalidate scopes) both refresh the
+// same underlying data — there's no longer a second, independently-simulated
+// pass for pool teams that could drift from the drafted-team numbers.
 export async function adminRefreshWinProbabilities(): Promise<AdminRefreshResult> {
   const denied = await requireAdmin();
   if (denied) return denied;
@@ -41,6 +47,7 @@ export async function adminRefreshWinProbabilities(): Promise<AdminRefreshResult
   revalidatePath('/dashboard/matchups');
   revalidatePath('/dashboard/my-roster');
   revalidatePath('/dashboard/teams');
+  revalidatePath('/dashboard/sleeper-pool');
   return { success: true, message: `Updated ${result.updated}/${result.total} teams (week ${result.week}), ${result.failed} failed.` };
 }
 
@@ -50,5 +57,7 @@ export async function adminRefreshPoolWinProbabilities(): Promise<AdminRefreshRe
 
   const result = await refreshPoolWinProbabilities();
   revalidatePath('/dashboard/sleeper-pool');
+  revalidatePath('/dashboard/my-roster');
+  revalidatePath('/dashboard/teams');
   return { success: true, message: `Updated ${result.updated}/${result.total} pool teams (week ${result.week}), ${result.failed} failed.` };
 }
