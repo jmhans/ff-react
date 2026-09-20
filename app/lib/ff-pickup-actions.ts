@@ -39,14 +39,14 @@ export async function getMyPicksForPickup(): Promise<MyPick[]> {
       dp.id, dp.picked_name, l.display_name as league_name,
       r.wins, r.losses, r.ties, r.fpts_for,
       (SELECT AVG(r2.fpts_for) FROM ff_sleeper_rosters r2 WHERE r2.league_key = dp.sleeper_league_key) as league_avg_fpts,
-      pwc.win_prob as win_prob_week,
-      pwc.opponent_name as opponent_name_week
+      twc.win_prob as win_prob_week,
+      twc.opponent_name as opponent_name_week
     FROM ff_draft_picks dp
     JOIN ff_drafts d ON d.id = dp.draft_id AND d.season = ${CURRENT_SEASON}
     LEFT JOIN ff_leagues l ON l.sleeper_league_key = dp.sleeper_league_key AND l.platform = 'sleeper'
     LEFT JOIN ff_sleeper_rosters r ON r.league_key = dp.sleeper_league_key AND r.sleeper_user_id = dp.sleeper_user_id
-    LEFT JOIN ff_pool_team_win_probability_cache pwc ON pwc.league_key = dp.sleeper_league_key AND pwc.sleeper_user_id = dp.sleeper_user_id
-      AND pwc.season = ${CURRENT_SEASON} AND pwc.week = ${currentWeek}
+    LEFT JOIN ff_team_win_probability_cache twc ON twc.pick_id = dp.id
+      AND twc.season = ${CURRENT_SEASON} AND twc.week = ${currentWeek}
     WHERE dp.drafter_owner_id = ${claimed.id}
     ORDER BY dp.picked_name ASC
   `;
