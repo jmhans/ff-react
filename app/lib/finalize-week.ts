@@ -183,13 +183,15 @@ export async function finalizeWeek(
 export async function finalizeCompletedWeeks(): Promise<{ finalizedWeeks: number[]; finalizedMatchups: number; skippedMatchups: number }> {
   const client = new SleeperClient();
   const state = await client.getNflState();
-  const currentWeek = Number(state.week);
+  const parsedCurrentWeek = Number(state.week);
+  const currentWeek = Number.isFinite(parsedCurrentWeek) ? parsedCurrentWeek : 0;
   const scheduleResult = await sql`
     SELECT MAX(week) AS max_week
     FROM ff_weekly_matchups
     WHERE season = ${CURRENT_SEASON}
   `;
-  const maxScheduledWeek = Number(scheduleResult.rows[0]?.max_week ?? 0);
+  const parsedMaxScheduledWeek = Number(scheduleResult.rows[0]?.max_week ?? 0);
+  const maxScheduledWeek = Number.isFinite(parsedMaxScheduledWeek) ? parsedMaxScheduledWeek : 0;
   const lastCompletedWeek = Math.min(currentWeek - 1, maxScheduledWeek);
 
   if (lastCompletedWeek < 1) {
@@ -208,7 +210,11 @@ export async function finalizeCompletedWeeks(): Promise<{ finalizedWeeks: number
   let skippedMatchups = 0;
 
   for (const row of weeksResult.rows) {
-    const result = await finalizeWeek(Number(row.week), client);
+    const week = Number(row.week);
+    if (!Number.isFinite(week) || week < 1) {
+      continue;
+    }
+    const result = await finalizeWeek(week, client);
     if (result.finalized > 0) {
       finalizedWeeks.push(result.week);
     }
