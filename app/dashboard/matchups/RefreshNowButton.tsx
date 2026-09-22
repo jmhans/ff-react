@@ -12,7 +12,7 @@ export default function RefreshNowButton() {
     startTransition(async () => {
       const result = await refreshNow();
       if (result.success) {
-        setMessage('Refreshed rosters and win probabilities.');
+        setMessage('Refreshed data and resolved any completed weeks.');
       } else {
         setMessage(result.error);
       }
