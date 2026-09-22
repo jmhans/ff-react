@@ -207,7 +207,7 @@ export async function finalizeCompletedWeeks(): Promise<{ finalizedWeeks: number
   let skippedMatchups = 0;
 
   for (const row of weeksResult.rows) {
-    const result = await finalizeWeek(row.week as number, client);
+    const result = await finalizeWeek(Number(row.week), client);
     if (result.finalized > 0) {
       finalizedWeeks.push(result.week);
     }
