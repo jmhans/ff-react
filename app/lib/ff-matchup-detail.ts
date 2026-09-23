@@ -84,6 +84,7 @@ async function getOwnerSide(
   ownerId: string,
   week: number,
   useActualResults = false,
+  client: SleeperClient | null = null,
   leagueWeekCache: Map<string, Promise<LeagueWeekData>> = new Map(),
 ): Promise<{ side: OwnerMatchupSide; winProbs: number[] }> {
   const ownerResult = await sql`SELECT team_name, display_name FROM ff_owners WHERE id = ${ownerId}`;
@@ -108,7 +109,6 @@ async function getOwnerSide(
     ORDER BY dp.picked_name ASC
   `;
 
-  const client = useActualResults ? new SleeperClient() : null;
   const teams: TeamLine[] = [];
   const winProbs: number[] = [];
   let expectedWins = 0;
@@ -183,10 +183,11 @@ export async function computeMatchupDetail(
   useActualResults = false,
   finalizedWinProbHome: number | null = null,
 ): Promise<MatchupDetail> {
+  const client = useActualResults ? new SleeperClient() : null;
   const leagueWeekCache = useActualResults ? new Map<string, Promise<LeagueWeekData>>() : undefined;
   const [homeResult, awayResult] = await Promise.all([
-    getOwnerSide(homeOwnerId, week, useActualResults, leagueWeekCache),
-    getOwnerSide(awayOwnerId, week, useActualResults, leagueWeekCache),
+    getOwnerSide(homeOwnerId, week, useActualResults, client, leagueWeekCache),
+    getOwnerSide(awayOwnerId, week, useActualResults, client, leagueWeekCache),
   ]);
 
   const winProbHome =

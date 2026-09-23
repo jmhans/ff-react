@@ -181,39 +181,37 @@ export async function finalizeWeek(
  * eligible to resolve.
  */
 export async function finalizeCompletedWeeks(): Promise<{ finalizedWeeks: number[]; finalizedMatchups: number; skippedMatchups: number }> {
+  const unresolvedWeeksResult = await sql`
+    SELECT DISTINCT week
+    FROM ff_weekly_matchups
+    WHERE season = ${CURRENT_SEASON} AND status != 'final'
+    ORDER BY week ASC
+  `;
+
+  if (unresolvedWeeksResult.rowCount === 0) {
+    return { finalizedWeeks: [], finalizedMatchups: 0, skippedMatchups: 0 };
+  }
+
+  const unresolvedWeeks = unresolvedWeeksResult.rows
+    .map((row) => Number(row.week))
+    .filter((week) => Number.isFinite(week) && week >= 1);
+  const maxScheduledWeek = unresolvedWeeks.length > 0 ? Math.max(...unresolvedWeeks) : 0;
+
   const client = new SleeperClient();
   const state = await client.getNflState();
   const parsedCurrentWeek = Number(state.week);
   const currentWeek = Number.isFinite(parsedCurrentWeek) ? parsedCurrentWeek : 0;
-  const scheduleResult = await sql`
-    SELECT MAX(week) AS max_week
-    FROM ff_weekly_matchups
-    WHERE season = ${CURRENT_SEASON}
-  `;
-  const parsedMaxScheduledWeek = Number(scheduleResult.rows[0]?.max_week ?? 0);
-  const maxScheduledWeek = Number.isFinite(parsedMaxScheduledWeek) ? parsedMaxScheduledWeek : 0;
   const lastCompletedWeek = Math.min(currentWeek - 1, maxScheduledWeek);
 
   if (lastCompletedWeek < 1) {
     return { finalizedWeeks: [], finalizedMatchups: 0, skippedMatchups: 0 };
   }
 
-  const weeksResult = await sql`
-    SELECT DISTINCT week
-    FROM ff_weekly_matchups
-    WHERE season = ${CURRENT_SEASON} AND status != 'final' AND week <= ${lastCompletedWeek}
-    ORDER BY week ASC
-  `;
-
   const finalizedWeeks: number[] = [];
   let finalizedMatchups = 0;
   let skippedMatchups = 0;
 
-  for (const row of weeksResult.rows) {
-    const week = Number(row.week);
-    if (!Number.isFinite(week) || week < 1) {
-      continue;
-    }
+  for (const week of unresolvedWeeks.filter((value) => value <= lastCompletedWeek)) {
     const result = await finalizeWeek(week, client);
     if (result.finalized > 0) {
       finalizedWeeks.push(result.week);
