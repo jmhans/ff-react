@@ -161,13 +161,15 @@ export async function computeMatchupDetail(
   awayOwnerId: string,
   week: number,
   useActualResults = false,
+  finalizedWinProbHome: number | null = null,
 ): Promise<MatchupDetail> {
   const [homeResult, awayResult] = await Promise.all([
     getOwnerSide(homeOwnerId, week, useActualResults),
     getOwnerSide(awayOwnerId, week, useActualResults),
   ]);
 
-  const winProbHome = simulateTeamCountWinProbability(homeResult.winProbs, awayResult.winProbs);
+  const winProbHome =
+    finalizedWinProbHome ?? simulateTeamCountWinProbability(homeResult.winProbs, awayResult.winProbs);
 
   return { week, home: homeResult.side, away: awayResult.side, winProbHome };
 }
