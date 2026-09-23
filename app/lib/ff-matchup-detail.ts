@@ -28,6 +28,16 @@ export type MatchupDetail = {
   winProbHome: number | null;
 };
 
+type LeagueWeekData = Awaited<ReturnType<typeof loadLeagueWeekData>>;
+
+async function loadLeagueWeekData(client: SleeperClient, leagueKey: string, week: number) {
+  const [rosters, matchups] = await Promise.all([
+    client.getLeagueRosters(leagueKey),
+    client.getMatchups(leagueKey, week),
+  ]);
+  return { rosters, matchups };
+}
+
 /**
  * Usually pulls everything from ff_team_win_probability_cache — the default
  * path makes no live Sleeper calls. That cache is refreshed by the daily cron
@@ -46,11 +56,14 @@ async function getActualTeamResult(
   leagueKey: string,
   sleeperUserId: string,
   week: number,
+  leagueWeekCache: Map<string, Promise<LeagueWeekData>>,
 ): Promise<{ ourPoints: number; theirPoints: number; winProb: number }> {
-  const [rosters, matchups] = await Promise.all([
-    client.getLeagueRosters(leagueKey),
-    client.getMatchups(leagueKey, week),
-  ]);
+  const leagueWeek =
+    leagueWeekCache.get(leagueKey) ??
+    loadLeagueWeekData(client, leagueKey, week);
+  leagueWeekCache.set(leagueKey, leagueWeek);
+
+  const { rosters, matchups } = await leagueWeek;
   const roster = rosters.find((r) => r.owner_id === sleeperUserId);
   if (!roster) throw new Error('Roster not found');
 
@@ -71,6 +84,7 @@ async function getOwnerSide(
   ownerId: string,
   week: number,
   useActualResults = false,
+  leagueWeekCache: Map<string, Promise<LeagueWeekData>> = new Map(),
 ): Promise<{ side: OwnerMatchupSide; winProbs: number[] }> {
   const ownerResult = await sql`SELECT team_name, display_name FROM ff_owners WHERE id = ${ownerId}`;
   const ownerRow = ownerResult.rows[0];
@@ -107,7 +121,13 @@ async function getOwnerSide(
 
       if (useActualResults && client && p.sleeper_league_key && p.sleeper_user_id) {
         try {
-          const actual = await getActualTeamResult(client, p.sleeper_league_key as string, p.sleeper_user_id as string, week);
+          const actual = await getActualTeamResult(
+            client,
+            p.sleeper_league_key as string,
+            p.sleeper_user_id as string,
+            week,
+            leagueWeekCache,
+          );
           winProb = actual.winProb;
           projFor = actual.ourPoints;
           projAgainst = actual.theirPoints;
@@ -163,9 +183,10 @@ export async function computeMatchupDetail(
   useActualResults = false,
   finalizedWinProbHome: number | null = null,
 ): Promise<MatchupDetail> {
+  const leagueWeekCache = useActualResults ? new Map<string, Promise<LeagueWeekData>>() : undefined;
   const [homeResult, awayResult] = await Promise.all([
-    getOwnerSide(homeOwnerId, week, useActualResults),
-    getOwnerSide(awayOwnerId, week, useActualResults),
+    getOwnerSide(homeOwnerId, week, useActualResults, leagueWeekCache),
+    getOwnerSide(awayOwnerId, week, useActualResults, leagueWeekCache),
   ]);
 
   const winProbHome =
