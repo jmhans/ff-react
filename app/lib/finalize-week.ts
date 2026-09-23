@@ -140,7 +140,9 @@ export async function finalizeWeek(
       await sql`
         UPDATE ff_weekly_matchups
         SET home_points = ${home.totalPoints}, home_team_wins = ${home.teamWins},
-            home_ratio_product = ${home.ratioProduct}, status = 'final', updated_at = now()
+            home_ratio_product = ${home.ratioProduct},
+            home_wins = 1, away_wins = 0, winner_owner_id = ${homeOwnerId},
+            status = 'final', updated_at = now()
         WHERE season = ${CURRENT_SEASON} AND week = ${week} AND home_owner_id = ${homeOwnerId} AND away_owner_id IS NULL
       `;
       finalized += 1;
@@ -195,6 +197,9 @@ export async function finalizeCompletedWeeks(): Promise<{ finalizedWeeks: number
   const unresolvedWeeks = unresolvedWeeksResult.rows
     .map((row) => Number(row.week))
     .filter((week) => Number.isFinite(week) && week >= 1);
+  if (unresolvedWeeks.length === 0) {
+    return { finalizedWeeks: [], finalizedMatchups: 0, skippedMatchups: 0 };
+  }
   const maxScheduledWeek = unresolvedWeeks.length > 0 ? Math.max(...unresolvedWeeks) : 0;
 
   const client = new SleeperClient();

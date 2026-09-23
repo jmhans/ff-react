@@ -191,7 +191,9 @@ export async function computeMatchupDetail(
   ]);
 
   const winProbHome =
-    finalizedWinProbHome ?? simulateTeamCountWinProbability(homeResult.winProbs, awayResult.winProbs);
+    useActualResults && finalizedWinProbHome != null
+      ? finalizedWinProbHome
+      : simulateTeamCountWinProbability(homeResult.winProbs, awayResult.winProbs);
 
   return { week, home: homeResult.side, away: awayResult.side, winProbHome };
 }
