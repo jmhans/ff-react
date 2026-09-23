@@ -6,7 +6,7 @@ import { runDailyRefresh } from '@/app/lib/refresh';
 export const maxDuration = 60;
 
 /**
- * Daily roster sync + win-probability refresh. Triggered by Vercel Cron (see
+ * Daily roster sync + completed-week finalization + win-probability refresh. Triggered by Vercel Cron (see
  * vercel.json). Rosters change any time owners add/drop players, and win
  * probabilities matter most right before/during games, but Vercel's Hobby
  * plan only allows daily cron cadence — same-day freshness beyond this is

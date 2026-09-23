@@ -75,7 +75,20 @@ export default async function MatchupDetailPage({
   if (!matchup || !matchup.away_owner_id) notFound();
 
   const isFinal = matchup.status === 'final';
-  const detail = await computeMatchupDetail(matchup.home_owner_id as string, matchup.away_owner_id as string, matchup.week as number);
+  const finalizedWinProbHome = isFinal
+    ? matchup.winner_owner_id === matchup.home_owner_id
+      ? 1
+      : matchup.winner_owner_id === matchup.away_owner_id
+        ? 0
+        : 0.5
+    : null;
+  const detail = await computeMatchupDetail(
+    matchup.home_owner_id as string,
+    matchup.away_owner_id as string,
+    matchup.week as number,
+    isFinal,
+    finalizedWinProbHome,
+  );
 
   const homeTeamWins = matchup.home_team_wins as number | null;
   const awayTeamWins = matchup.away_team_wins as number | null;

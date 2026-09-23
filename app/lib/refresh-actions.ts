@@ -43,6 +43,7 @@ export async function refreshNow(): Promise<RefreshNowResult> {
   revalidatePath('/dashboard/my-roster');
   revalidatePath('/dashboard/matchups');
   revalidatePath('/dashboard/sleeper-pool');
+  revalidatePath('/dashboard/standings');
   revalidatePath('/dashboard/teams');
   return { success: true };
 }

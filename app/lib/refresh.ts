@@ -1,5 +1,6 @@
 import { sql } from '@vercel/postgres';
 import { CURRENT_SEASON } from '@/app/lib/ff-draft-helpers';
+import { finalizeCompletedWeeks } from './finalize-week';
 import { SleeperClient } from '@/app/lib/sleeper/client';
 import { computeWeeklyMatchup } from '@/app/lib/sleeper/weekly-matchup';
 
@@ -185,11 +186,12 @@ export async function refreshAllWinProbabilities(): Promise<{ week: number; upda
   return { week, updated, failed, total: teams.rows.length };
 }
 
-/** Roster sync + pool/drafted win-prob refresh (single shared computation per team), run together daily via cron and on-demand via the manual refresh button. */
+/** Roster sync + completed-week finalization + pool/drafted win-prob refresh, run together daily via cron and on-demand via the manual refresh button. */
 export async function runDailyRefresh() {
   const rosters = await syncAllLeagueRosters();
+  const finalized = await finalizeCompletedWeeks();
   const winProbs = await refreshAllWinProbabilities();
-  return { rosters, winProbs };
+  return { rosters, finalized, winProbs };
 }
 
 /**
