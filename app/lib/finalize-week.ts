@@ -141,7 +141,7 @@ export async function finalizeWeek(
         UPDATE ff_weekly_matchups
         SET home_points = ${home.totalPoints}, home_team_wins = ${home.teamWins},
             home_ratio_product = ${home.ratioProduct},
-            home_wins = 1, away_wins = 0, winner_owner_id = ${homeOwnerId},
+            home_wins = 0, away_wins = 0, winner_owner_id = null,
             status = 'final', updated_at = now()
         WHERE season = ${CURRENT_SEASON} AND week = ${week} AND home_owner_id = ${homeOwnerId} AND away_owner_id IS NULL
       `;
