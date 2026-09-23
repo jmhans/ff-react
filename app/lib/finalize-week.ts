@@ -120,7 +120,7 @@ export async function finalizeWeek(
   const matchups = await sql`
     SELECT home_owner_id, away_owner_id
     FROM ff_weekly_matchups
-    WHERE season = ${CURRENT_SEASON} AND week = ${week} AND status != 'final'
+    WHERE season = ${CURRENT_SEASON} AND week = ${week}
   `;
 
   let finalized = 0;
