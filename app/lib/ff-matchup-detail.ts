@@ -60,7 +60,10 @@ async function getActualTeamResult(
 ): Promise<{ ourPoints: number; theirPoints: number; winProb: number }> {
   const leagueWeek =
     leagueWeekCache.get(leagueKey) ??
-    loadLeagueWeekData(client, leagueKey, week);
+    loadLeagueWeekData(client, leagueKey, week).catch((error) => {
+      leagueWeekCache.delete(leagueKey);
+      throw error;
+    });
   leagueWeekCache.set(leagueKey, leagueWeek);
 
   const { rosters, matchups } = await leagueWeek;
